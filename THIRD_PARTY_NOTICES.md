@@ -12,7 +12,7 @@ GUI file dropping uses tkinterdnd2 0.6.3, distributed under the MIT license (`li
 
 The executables are built with PyInstaller 6.22.3, licensed under GPL with a bootloader distribution exception. Its COPYING text is provided at `licenses/PyInstaller-COPYING.txt`. See https://pyinstaller.org/en/stable/license.html .
 
-All application source files are included in this distribution. Dependency sources and license terms are controlled by their respective upstream projects.
+The complete Windows ZIP includes all application source files. The portable GUI ZIP uses the unchanged v1.4.1 application source, available at https://github.com/Zerozero05/Zotero_PDF_Bookmarks/tree/v1.4.1 . Dependency sources and license terms are controlled by their respective upstream projects.
 
 The v1.3 desktop application adds RapidOCR 3.9.2 (Apache 2.0) and its bundled PP-OCRv6 small detection/recognition and PP-OCRv4 mobile classification ONNX models, derived from PaddleOCR. Upstream projects and licenses: https://github.com/RapidAI/RapidOCR and https://github.com/PaddlePaddle/PaddleOCR . The upstream license texts are reproduced under `licenses/ocr/RapidOCR` and `licenses/ocr/PaddleOCR`.
 

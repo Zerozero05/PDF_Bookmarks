@@ -1,6 +1,6 @@
 # 完整使用说明
 
-本页保留 v1.4.1 的使用说明。源码命令均在仓库根目录执行；可执行版从 [GitHub Releases](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases) 下载。项目首页见 [README.md](../README.md)，维护与清理流程见 [MAINTENANCE.md](MAINTENANCE.md)。
+本页保留 v1.4.1 的使用说明，并说明新增的便携文件夹打包方式。源码命令均在仓库根目录执行；可执行版从 [v1.4.1 发布页](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases/tag/v1.4.1) 下载。项目首页见 [README.md](../README.md)，维护与清理流程见 [MAINTENANCE.md](MAINTENANCE.md)。
 
 当前 Windows 版：**v1.4.1**。新增可选的“写入成功后删除目录 JSON”，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级、JSON 保存目录、独立目录工作台，以及原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能保留。
 
@@ -12,7 +12,17 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 ## 最快开始：Windows 可执行版
 
-1. 在 Releases 下载完整 Windows ZIP，解压其中的 `ZoteroPDFBookmarks` 文件夹，打开 `dist\ZoteroPDFBookmarks.exe`。也可直接下载独立 GUI EXE。程序面向 Windows 10/11 x64，无需安装 Python。
+选择以下任一种 GUI，无需安装 Python：
+
+| 下载文件 | 打开方式 |
+| --- | --- |
+| `ZoteroPDFBookmarks-v1.4.1.exe` | 原单文件版，直接运行；每次启动会临时解包运行库 |
+| [ZoteroPDFBookmarks-Portable-v1.4.1.zip](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases/download/v1.4.1/ZoteroPDFBookmarks-Portable-v1.4.1.zip) | 新增便携文件夹版，完整解压后运行 `ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe` |
+| `ZoteroPDFBookmarks-Windows-x64-v1.4.1.zip` | 原完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `ZoteroPDFBookmarks\dist\ZoteroPDFBookmarks.exe` |
+
+便携版须让 EXE、`_internal` 与其余文件保留在同一文件夹内；移动时移动整个 `ZoteroPDFBookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。原完整 Windows ZIP 中的 GUI 仍是单文件版，与新增便携 ZIP 不同。原三个程序包使用 `SHA256SUMS.txt` 校验；便携 ZIP 使用 `ZoteroPDFBookmarks-Portable-v1.4.1.zip.sha256` 校验。
+
+1. 从发布页下载所选程序，按上表打开。程序面向 Windows 10/11 x64。
 2. 在 Zotero 中右键 PDF 附件，选择“显示文件”，找到它现在正在使用的 PDF。
 3. 关闭这本 PDF 的阅读窗口，选择原 PDF 和对应的 `toc.json`；没有 JSON 时，点上方“生成 / 编辑目录…”。若准备清除茉莉花缓存，请先完全退出 Zotero。
 4. 点“1. 预览”，在处理列表中选中一本书，展开目录并点击标题，在右侧核对实际目标页图片。预览不修改 PDF，也不创建备份。
@@ -35,7 +45,7 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 4. **批量处理列表**：逐本显示目录匹配、校验和写入状态，可勾选参与写入的文件。缺少 JSON 或校验失败的文件不会写入；单本失败不阻止其他已勾选文件。若目录 JSON 放在其他文件夹，先预览文件夹，再拖入对应同名 JSON 补配，重新预览即可。处理详情保留在记录中。
 5. **右上角“置顶”开关**：勾选后窗口保持在普通应用窗口上方，切换浏览器或 Zotero 时仍可看到它；取消后恢复普通窗口行为。主窗口与目录工作台分别记住自己的选择。首次升级时工作台沿用旧主窗口的置顶设置，此后可以独立取消或开启。
 
-设置文件位置为 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`，不会放进 Zotero storage 或 PDF 文件夹。设置损坏时使用默认值；想恢复默认设置，可以关闭程序后删除这个设置文件。
+两种 GUI 共用设置文件 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`，切换打包方式无需迁移设置。便携版也把设置保存在当前电脑，不放进程序文件夹、Zotero storage 或 PDF 文件夹。设置损坏时使用默认值；想恢复默认设置，可以关闭程序后删除这个设置文件。
 
 “写入选项”中提供：
 
@@ -267,14 +277,17 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 
 ## 打包与验证
 
-在 Windows 上双击 `build_exe.cmd`：安装打包依赖、运行测试，再生成 GUI 和 CLI 两个 `.exe`。默认输出到 `dist`，构建中间文件在 `build`。命令行等效步骤：
+在 Windows 上双击 `build_exe.cmd`：安装打包依赖、运行测试，再生成原 GUI/CLI 单文件 EXE 和新增的 GUI 便携文件夹版。原输出仍在 `dist`，便携版输出到 `dist\portable\ZoteroPDFBookmarks`，构建中间文件在 `build`。命令行等效步骤：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks gui_entry.py
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --console --additional-hooks-dir=. --name ZoteroPDFBookmarks-CLI bookmarks.py
+.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onedir --windowed --distpath dist\portable --workpath build\portable --specpath build\portable --additional-hooks-dir=. --name ZoteroPDFBookmarks gui_entry.py
 ```
+
+便携版的入口是 `dist\portable\ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe`，必须连同 `_internal` 和运行文件夹一起分发；发布 ZIP 还随附本项目及第三方许可。两种 GUI 使用相同源码、依赖和 OCR 模型。
 
 打包须在目标系统上进行，迁移前的 v1.4.1 二进制在 Windows x64、Python 3.12.14 上构建；GitHub 自动构建使用 Windows x64、Python 3.12，具体环境见对应运行日志。未进行 Windows ARM64、32 位系统或所有 Windows 版本兼容性实测。写入测试只使用自动生成的临时 PDF，覆盖中文路径、多层目录、偏移映射、已有书签、内容/批注保持、备份和失败保护，以及备份设置和缓存清理规则；真实书籍仅用于只读目录识别，未修改真实 Zotero 附件或缓存。迁移前已完成验证见 [VALIDATION.md](../VALIDATION.md)，云端测试结果以 Actions 页面为准。
 
