@@ -50,7 +50,12 @@ jobs:
       - name: Install pinned application and build dependencies
         run: python -m pip install -r requirements-build.txt
       - name: Run source tests with real Tk and temporary PDFs
-        run: python -m unittest discover -s tests -v
+        shell: pwsh
+        run: |
+          # Avoid the runner user's 8.3 TEMP alias; keep path checks comparable.
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          python -m unittest discover -s tests -v
       - name: Build GUI with drag-and-drop and offline OCR
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --distpath dist --workpath build/gui --specpath build gui_entry.py
       - name: Build command-line program
@@ -70,15 +75,10 @@ jobs:
 
   release:
     needs: build
-    # The one-time approved migration exception is removed after v1.4.1 is verified.
-    # Future releases require a version tag pushed after the user confirms testing.
+    # Release only a version tag pushed after the user confirms testing.
     if: >-
       github.event_name == 'push' &&
-      (startsWith(github.ref, 'refs/tags/v') ||
-       (github.ref == 'refs/heads/main' &&
-        github.repository == 'Zerozero05/Zotero_PDF_Bookmarks' &&
-        github.event.head_commit.message == 'Initialize approved v1.4.1 migration' &&
-        needs.build.outputs.version == '1.4.1'))
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 15
     permissions:
@@ -126,11 +126,7 @@ jobs:
           [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
           $assets = @(Get-ChildItem artifacts -File | ForEach-Object { $_.FullName })
           $arguments = @('release', 'create', $tag, '--draft', '--title', "Zotero PDF Bookmarks $tag", '--notes-file', $notesPath)
-          if ($env:GITHUB_REF.StartsWith('refs/tags/')) {
-            $arguments += '--verify-tag'
-          } else {
-            $arguments += @('--target', $env:RELEASE_COMMIT)
-          }
+          $arguments += '--verify-tag'
           gh @arguments @assets
           if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; the release remains a draft' }
           gh release edit $tag --draft=false --latest
