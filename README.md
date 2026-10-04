@@ -50,7 +50,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-固定依赖在 `requirements.txt` 和 `requirements-build.txt`。迁移前 v1.4.1 的 151 项本地回归已通过，检查范围和限制见 [VALIDATION.md](VALIDATION.md)。GitHub Actions 的测试与构建结果以对应运行页面为准。
+固定依赖在 `requirements.txt` 和 `requirements-build.txt`。v1.4.1 的 151 项本地及云端回归已通过；发布 ZIP 的源码、EXE、校验值及 Windows 启动也已实际验证。检查范围和限制见 [VALIDATION.md](VALIDATION.md)，云端记录见 [首次正式构建](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/actions/runs/37211403970)。后续构建以各次运行结果为准。
 
 ## 项目结构与版本发布
 
