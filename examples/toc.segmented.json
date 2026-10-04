@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "mapping": {
+    "segments": [
+      { "printed_start": 1, "printed_end": 100, "pdf_start": 11 },
+      { "printed_start": 101, "printed_end": 200, "pdf_start": 113 }
+    ]
+  },
+  "bookmarks": [
+    { "title": "前言（罗马页码，直接指定 PDF 页）", "pdf_page": 5 },
+    {
+      "title": "第1章 基本概念",
+      "page": 1,
+      "children": [
+        { "title": "1.1 定义", "page": 3 },
+        { "title": "1.2 性质", "page": 12 }
+      ]
+    },
+    { "title": "第2章 插页之后的章节", "page": 101 }
+  ]
+}

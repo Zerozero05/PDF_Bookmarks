@@ -1,0 +1,137 @@
+name: Windows tests and EXE build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Check out approved source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12 x64
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+      - name: Validate version and release tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid VERSION' }
+          if ($env:GITHUB_REF.StartsWith('refs/tags/') -and $env:GITHUB_REF -ne "refs/tags/v$version") {
+            throw 'Release tag must match VERSION exactly'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Install pinned application and build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Run source tests with real Tk and temporary PDFs
+        run: python -m unittest discover -s tests -v
+      - name: Build GUI with drag-and-drop and offline OCR
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --distpath dist --workpath build/gui --specpath build gui_entry.py
+      - name: Build command-line program
+        run: python -m PyInstaller --noconfirm --clean --onefile --console --additional-hooks-dir=. --name ZoteroPDFBookmarks-CLI --distpath dist --workpath build/cli --specpath build bookmarks.py
+      - name: Check frozen program and bundled resources
+        run: python scripts/smoke_binaries.py
+      - name: Package source, licenses, EXEs and checksums
+        run: python scripts/package_release.py
+      - name: Upload test build for local review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ZoteroPDFBookmarks-Windows-x64-v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    needs: build
+    # The one-time approved migration exception is removed after v1.4.1 is verified.
+    # Future releases require a version tag pushed after the user confirms testing.
+    if: >-
+      github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (github.ref == 'refs/heads/main' &&
+        github.repository == 'Zerozero05/Zotero_PDF_Bookmarks' &&
+        github.event.head_commit.message == 'Initialize approved v1.4.1 migration' &&
+        needs.build.outputs.version == '1.4.1'))
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+      RELEASE_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Download tested Windows build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ZoteroPDFBookmarks-Windows-x64-v${{ needs.build.outputs.version }}-${{ github.run_number }}
+          path: artifacts
+      - name: Check downloaded asset hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @(
+            "ZoteroPDFBookmarks-v$env:RELEASE_VERSION.exe",
+            "ZoteroPDFBookmarks-CLI-v$env:RELEASE_VERSION.exe",
+            "ZoteroPDFBookmarks-Windows-x64-v$env:RELEASE_VERSION.zip"
+          )
+          $checked = @()
+          foreach ($line in Get-Content artifacts/SHA256SUMS.txt) {
+            if ($line -notmatch '^([a-f0-9]{64})  ([A-Za-z0-9.-]+)$') { throw 'Invalid checksum row' }
+            $hash = $Matches[1]
+            $file = $Matches[2]
+            if ($expected -notcontains $file) { throw "Unexpected asset $file" }
+            $actual = (Get-FileHash -LiteralPath (Join-Path artifacts $file) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $hash) { throw "Checksum mismatch for $file" }
+            $checked += $file
+          }
+          if (($checked | Sort-Object -Unique).Count -ne 3) { throw 'Missing asset checksum' }
+      - name: Publish approved version without replacing an existing release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "v$env:RELEASE_VERSION"
+          gh release view $tag --json id 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; it will not be overwritten" }
+          $notes = "Windows x64 GUI and CLI, with source, documentation and licenses in the ZIP. `n`nSee CHANGELOG.md at https://github.com/$env:GH_REPO/blob/$tag/CHANGELOG.md. `n`nVerify downloads against SHA256SUMS.txt."
+          $notesPath = Join-Path $env:RUNNER_TEMP release-notes.md
+          [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
+          $assets = @(Get-ChildItem artifacts -File | ForEach-Object { $_.FullName })
+          $arguments = @('release', 'create', $tag, '--draft', '--title', "Zotero PDF Bookmarks $tag", '--notes-file', $notesPath)
+          if ($env:GITHUB_REF.StartsWith('refs/tags/')) {
+            $arguments += '--verify-tag'
+          } else {
+            $arguments += @('--target', $env:RELEASE_COMMIT)
+          }
+          gh @arguments @assets
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; the release remains a draft' }
+          gh release edit $tag --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing release failed' }

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "mapping": { "offset": 10 },
+  "bookmarks": [
+    {
+      "title": "第1章 基本概念和准备知识",
+      "page": 1,
+      "children": [
+        {
+          "title": "§1 动力系统及其结构稳定性",
+          "page": 1,
+          "children": [
+            { "title": "1.1 定义与例子", "page": 2 }
+          ]
+        },
+        { "title": "§2 分岔与分岔问题的提法", "page": 8 }
+      ]
+    },
+    { "title": "第2章 局部分岔", "page": 21 }
+  ]
+}
