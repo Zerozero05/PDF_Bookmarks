@@ -1,6 +1,6 @@
 # 项目维护约定
 
-这是 Windows 本地 Zotero PDF 书签工具。先读取 `README.md`、`docs/USAGE.md`、`CHANGELOG.md` 和相关测试，再修改代码。`VERSION` 是当前发布版本；保留现有平铺源码结构与入口。
+这是 Windows 本地 PDF 书签工具 PDF_Bookmarks，可独立处理普通 PDF，并适配 Zotero 附件。先读取 `README.md`、`docs/USAGE.md`、`CHANGELOG.md` 和相关测试，再修改代码。`VERSION` 是当前发布版本；保留现有平铺源码结构与入口。
 
 - 精准修改：每项改动对应用户当前需求，不附带重构或改变已有默认值、界面、JSON 格式、CLI 参数和设置迁移规则。
 - 保留 PDF 原路径写入、预览只读、可选备份、校验后原子替换，以及成功后才执行清理的规则。删除目录 JSON 与茉莉花缓存是独立选项。

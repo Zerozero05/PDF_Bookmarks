@@ -1,12 +1,12 @@
-# 完整使用说明
+# PDF_Bookmarks 完整使用说明
 
-本页保留 v1.4.1 的使用说明，并说明新增的便携文件夹打包方式。源码命令均在仓库根目录执行；可执行版从 [v1.4.1 发布页](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases/tag/v1.4.1) 下载。项目首页见 [README.md](../README.md)，维护与清理流程见 [MAINTENANCE.md](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks v1.4.1 的使用方式及单文件、便携文件夹两种打包形式。源码命令均在仓库根目录执行；可执行版从 [v1.4.1 发布页](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1) 下载。项目首页见 [README.md](../README.md)，维护与清理流程见 [MAINTENANCE.md](MAINTENANCE.md)。
 
 当前 Windows 版：**v1.4.1**。新增可选的“写入成功后删除目录 JSON”，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级、JSON 保存目录、独立目录工作台，以及原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能保留。
 
 v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处理列表、预览后的书签树、目标页图片和处理记录现在能够正常显示和点击。关闭旧程序后换用新版 EXE 即可，原有设置自动保留；PDF 写入、备份、缓存清理和命令行逻辑没有改动。
 
-把 `toc.json` 中的章、节、小节写成 PDF 内部的 Outline / Bookmarks，直接更新 Zotero 当前使用的 PDF 路径。无需删除旧附件或重新附加新 PDF。中文界面、中文文件名和中文书签均支持。
+把 `toc.json` 中的章、节、小节写成 PDF 内部的 Outline / Bookmarks，直接更新原 PDF 路径。普通 PDF 可独立使用，不需要安装 Zotero；处理 Zotero 附件时无需删除旧附件或重新附加新 PDF。中文界面、中文文件名和中文书签均支持。
 
 **写入仍使用 PDF 和目录 JSON。没有 JSON 时，可先从 PDF 提取文字或使用内置的本地 OCR 生成目录，再校对和保存。** 它添加阅读器左侧的书签，不给正文插入目录页，也不修改 PDF 的页面标签。
 
@@ -16,17 +16,19 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 | 下载文件 | 打开方式 |
 | --- | --- |
-| `ZoteroPDFBookmarks-v1.4.1.exe` | 原单文件版，直接运行；每次启动会临时解包运行库 |
-| [ZoteroPDFBookmarks-Portable-v1.4.1.zip](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases/download/v1.4.1/ZoteroPDFBookmarks-Portable-v1.4.1.zip) | 新增便携文件夹版，完整解压后运行 `ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe` |
-| `ZoteroPDFBookmarks-Windows-x64-v1.4.1.zip` | 原完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `ZoteroPDFBookmarks\dist\ZoteroPDFBookmarks.exe` |
+| [PDF_Bookmarks_v1.4.1_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
+| [PDF_Bookmarks_v1.4.1_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe` |
+| [PDF_Bookmarks_v1.4.1_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `ZoteroPDFBookmarks\dist\ZoteroPDFBookmarks.exe` |
 
-便携版须让 EXE、`_internal` 与其余文件保留在同一文件夹内；移动时移动整个 `ZoteroPDFBookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。原完整 Windows ZIP 中的 GUI 仍是单文件版，与新增便携 ZIP 不同。原三个程序包使用 `SHA256SUMS.txt` 校验；便携 ZIP 使用 `ZoteroPDFBookmarks-Portable-v1.4.1.zip.sha256` 校验。
+便携版须让 EXE、`_internal` 与其余文件保留在同一文件夹内；移动时移动整个 `ZoteroPDFBookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。单文件 GUI、CLI 和完整包使用 `SHA256SUMS.txt` 校验；便携 ZIP 使用 `PDF_Bookmarks_v1.4.1_win_x64_portable.zip.sha256` 校验。此次只调整发布页下载文件名，ZIP 内部文件名、程序窗口名称和设置路径保持原样。
 
 1. 从发布页下载所选程序，按上表打开。程序面向 Windows 10/11 x64。
-2. 在 Zotero 中右键 PDF 附件，选择“显示文件”，找到它现在正在使用的 PDF。
-3. 关闭这本 PDF 的阅读窗口，选择原 PDF 和对应的 `toc.json`；没有 JSON 时，点上方“生成 / 编辑目录…”。若准备清除茉莉花缓存，请先完全退出 Zotero。
+2. 找到需要添加或更新书签的 PDF，关闭这本 PDF 的阅读窗口。
+3. 选择原 PDF 和对应的 `toc.json`；没有 JSON 时，点上方“生成 / 编辑目录…”。
 4. 点“1. 预览”，在处理列表中选中一本书，展开目录并点击标题，在右侧核对实际目标页图片。预览不修改 PDF，也不创建备份。
-5. 勾选需要处理的 PDF，按需设置备份、缓存清理和目录 JSON 删除选项，再次预览，点“2. 写入勾选的 PDF”。回到 Zotero，重新打开原附件并查看目录。
+5. 勾选需要处理的 PDF，按需设置备份、目录 JSON 删除等选项，再次预览，点“2. 写入勾选的 PDF”。在 PDF 阅读器中重新打开原文件，查看书签及跳转位置。
+
+处理 Zotero 附件时，先在 Zotero 中右键附件，选择“显示文件”定位原 PDF，再按上述流程处理；完成后重新打开同一附件。若准备清除茉莉花缓存，处理前须完全退出 Zotero。存储附件、链接附件和刷新同步的说明见后文 Zotero 专节。
 
 可以把 PDF、目录 JSON 或文件夹直接拖进已经打开的程序窗口，也可以把多个路径拖到 `.exe` 图标上启动。中文和带空格的路径均支持。
 
@@ -159,7 +161,7 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 
 ## 命令行
 
-源码入口：`launch_cli.cmd`；可执行入口：`dist\ZoteroPDFBookmarks-CLI.exe`。下面的命令在项目文件夹中运行，也可把前者替换为后者。
+源码入口：`launch_cli.cmd`；本地构建或完整包中的可执行入口：`dist\ZoteroPDFBookmarks-CLI.exe`；发布页单独下载的 CLI 文件名为 `PDF_Bookmarks_v1.4.1_win_x64_cli.exe`。下面的命令在项目文件夹中运行，也可把 `launch_cli.cmd` 替换为所用 CLI 的实际路径。
 
 ```powershell
 # 预览同名目录文件
@@ -251,7 +253,7 @@ Zotero 对存储附件和链接附件的同步方式不同：存储附件可通�
 _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 ```
 
-恢复方法：关闭该 PDF，从 `_backup` 或所选自定义备份文件夹选择要恢复的版本，复制到原目录并改回 **原 PDF 文件名**，覆盖当前文件，再回 Zotero 重开。先保留当前版本可方便撤销恢复。备份是每次写入前的文件，不一定都是首次处理前的版本；按时间选择。关闭备份的写入不会生成可供本工具恢复的原 PDF。需要完整 Zotero 库恢复时，还应单独备份 Zotero 数据目录，因为这些备份只包含 PDF。
+恢复方法：关闭该 PDF，从 `_backup` 或所选自定义备份文件夹选择要恢复的版本，复制到原目录并改回 **原 PDF 文件名**，覆盖当前文件，再在阅读器中重开；Zotero 用户重新打开同一附件即可。先保留当前版本可方便撤销恢复。备份是每次写入前的文件，不一定都是首次处理前的版本；按时间选择。关闭备份的写入不会生成可供本工具恢复的原 PDF。需要完整 Zotero 库恢复时，还应单独备份 Zotero 数据目录，因为这些备份只包含 PDF。
 
 异常关闭后可能留下 `.书名.pdf.bookmarks.lock` 或 `.书名.pdf.bookmarks.*.tmp`。先确认工具及其其他实例已结束，再删除这本书对应的残留锁/临时文件即可重试；不要删除原 PDF 或 `_backup`。增量替换只更新最新逻辑目录，旧目录对象仍可能留在 PDF 历史字节中，重复更新会略增文件体积。
 
@@ -287,7 +289,7 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onedir --windowed --distpath dist\portable --workpath build\portable --specpath build\portable --additional-hooks-dir=. --name ZoteroPDFBookmarks gui_entry.py
 ```
 
-便携版的入口是 `dist\portable\ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe`，必须连同 `_internal` 和运行文件夹一起分发；发布 ZIP 还随附本项目及第三方许可。两种 GUI 使用相同源码、依赖和 OCR 模型。
+便携版的入口是 `dist\portable\ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe`，必须连同 `_internal` 和运行文件夹一起分发；发布 ZIP 还随附本项目及第三方许可。两种 GUI 使用相同源码、依赖和 OCR 模型。当前构建脚本仍生成上述 `ZoteroPDFBookmarks` 名称；发布页下载文件的 `PDF_Bookmarks` 命名只在发布时调整，规则见 [MAINTENANCE.md](MAINTENANCE.md#发布命名与校验清单)。
 
 打包须在目标系统上进行，迁移前的 v1.4.1 二进制在 Windows x64、Python 3.12.14 上构建；GitHub 自动构建使用 Windows x64、Python 3.12，具体环境见对应运行日志。未进行 Windows ARM64、32 位系统或所有 Windows 版本兼容性实测。写入测试只使用自动生成的临时 PDF，覆盖中文路径、多层目录、偏移映射、已有书签、内容/批注保持、备份和失败保护，以及备份设置和缓存清理规则；真实书籍仅用于只读目录识别，未修改真实 Zotero 附件或缓存。迁移前已完成验证见 [VALIDATION.md](../VALIDATION.md)，云端测试结果以 Actions 页面为准。
 

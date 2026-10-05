@@ -171,11 +171,11 @@
 
 2026-10-04 将 v1.4.1 整理到 `Zerozero05/Zotero_PDF_Bookmarks`，83 个源码、测试、示例、许可、文档与构建文件的远端 Git 对象与本地提交逐项一致。应用源码和原有测试没有修改，保留本地完整回归 151 项通过。仓库不含 EXE、文献 PDF、用户目录 JSON、设置、凭据、虚拟环境或模型文件；EXE 与完整 ZIP 使用 GitHub Releases 管理。
 
-首次云端测试的 150 项通过、1 项失败来自 Windows runner 的 `RUNNER~1` 临时目录短名与解析后的长名不同。仅在云端测试步骤使用 runner 工作区临时目录，未修改程序路径保护或测试断言。调整后的 main 与 v1.4.1 标签构建均通过 151 项回归、GUI/CLI 打包、TkDnD/离线 OCR 配置及 3 个模型资源检查、完整 ZIP 的 CRC 检查和资产 SHA-256 校验。正式标签构建记录：https://github.com/Zerozero05/Zotero_PDF_Bookmarks/actions/runs/37211403970 。
+首次云端测试的 150 项通过、1 项失败来自 Windows runner 的 `RUNNER~1` 临时目录短名与解析后的长名不同。仅在云端测试步骤使用 runner 工作区临时目录，未修改程序路径保护或测试断言。调整后的 main 与 v1.4.1 标签构建均通过 151 项回归、GUI/CLI 打包、TkDnD/离线 OCR 配置及 3 个模型资源检查、完整 ZIP 的 CRC 检查和资产 SHA-256 校验。正式标签构建记录：https://github.com/Zerozero05/PDF_Bookmarks/actions/runs/37211403970 。
 
 发布后实际下载完整 ZIP，核对其中全部 83 个源码文件与 v1.4.1 标签一致（按 Git 行尾规则核对），ZIP 的 CRC 与 SHA-256 正确；其中两个 EXE 与独立下载资产的校验值及 GitHub 资产 digest 一致。实际运行云端 CLI 的 `--help`，并以隔离设置启动云端 GUI，检测到 68 个原生控件，正常关闭返回 0，原备份、中文备份目录、缓存和置顶设置保留，删除目录 JSON 默认关闭。验证下载和测试配置随后从临时目录移除，真实 Zotero 文献与用户设置未修改。
 
-发布地址：https://github.com/Zerozero05/Zotero_PDF_Bookmarks/releases/tag/v1.4.1 。常规提交只生成试用构建，未来正式发布仅由经用户确认的版本标签触发；没有自动删除用户本地文件的工作流。本次没有重做任意真实书籍的识别或完整冻结 GUI 交互，相关行为由之前的验证和本次源码回归覆盖。
+发布地址：https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1 。常规提交只生成试用构建，未来正式发布仅由经用户确认的版本标签触发；没有自动删除用户本地文件的工作流。本次没有重做任意真实书籍的识别或完整冻结 GUI 交互，相关行为由之前的验证和本次源码回归覆盖。
 
 ## v1.4.1 便携文件夹版验证
 
@@ -195,7 +195,7 @@
 
 便携 ZIP 已完成 CRC 与 SHA-256 核对，包含 EXE、完整 `_internal`、简明说明和本项目/第三方许可。文件夹版免安装，必须保留整个文件夹；它主要省去单文件启动解包，不能据此保证每页 OCR 或 PDF 写入更快，机制见 [PyInstaller 官方说明](https://pyinstaller.org/en/stable/operating-mode.html)。后续云端与发布后下载验证结果以对应记录为准。
 
-本次 [云端构建](https://github.com/Zerozero05/Zotero_PDF_Bookmarks/actions/runs/37238459258) 已通过 155 项回归、三种打包、资源检查和 ZIP/校验文件生成。本次发布采用已完成上述冻结验证的本地便携包；云端结果同时验证了新增自动构建流程。发布后实际下载新增 ZIP 与独立校验文件，CRC、1,145 个 ZIP 条目和 SHA-256 均正确，解压后重新检查运行资源并实际启动、正常关闭 EXE，原用户设置未改动。原发布 ID、v1.4.1 标签及四个原资产的 ID、大小、digest 和创建时间保持不变。
+本次 [云端构建](https://github.com/Zerozero05/PDF_Bookmarks/actions/runs/37238459258) 已通过 155 项回归、三种打包、资源检查和 ZIP/校验文件生成。本次发布采用已完成上述冻结验证的本地便携包；云端结果同时验证了新增自动构建流程。发布后实际下载新增 ZIP 与独立校验文件，CRC、1,145 个 ZIP 条目和 SHA-256 均正确，解压后重新检查运行资源并实际启动、正常关闭 EXE，原用户设置未改动。原发布 ID、v1.4.1 标签及四个原资产的 ID、大小、digest 和创建时间保持不变。
 
 ## 实际使用的验证边界
 
