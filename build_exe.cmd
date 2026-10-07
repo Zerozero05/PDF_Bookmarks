@@ -10,16 +10,17 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 goto fail
 ".venv\Scripts\python.exe" -m unittest discover -s tests -v
 if errorlevel 1 goto fail
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --distpath dist --workpath build\gui --specpath build gui_entry.py
-if errorlevel 1 goto fail
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --console --additional-hooks-dir=. --name ZoteroPDFBookmarks-CLI --distpath dist --workpath build\cli --specpath build bookmarks.py
-if errorlevel 1 goto fail
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --contents-directory _internal --distpath dist\portable --workpath build\portable --specpath build\portable gui_entry.py
+".venv\Scripts\python.exe" scripts\build_windows.py
 if errorlevel 1 goto fail
 ".venv\Scripts\python.exe" scripts\smoke_binaries.py
 if errorlevel 1 goto fail
-echo Built dist\ZoteroPDFBookmarks.exe and dist\ZoteroPDFBookmarks-CLI.exe
-echo Portable GUI: dist\portable\ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe
+".venv\Scripts\python.exe" scripts\package_release.py
+if errorlevel 1 goto fail
+".venv\Scripts\python.exe" scripts\test_frozen_updates.py
+if errorlevel 1 goto fail
+echo Built dist\PDF_Bookmarks.exe and dist\PDF_Bookmarks_CLI.exe
+echo Portable GUI: dist\portable\PDF_Bookmarks\PDF_Bookmarks.exe
+echo Validated release assets: artifacts\
 pause
 exit /b 0
 :fail
