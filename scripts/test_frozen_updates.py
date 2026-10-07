@@ -217,7 +217,7 @@ def run_case(base, variant, fail_health, current, newer, successor):
         customized = {"schema": 1, "backup": False, "backup_dir": "D:/自定义 备份", "recursive": True,
                       "existing": "replace", "auto_check_update": False, "topmost": False,
                       "editor_topmost": True, "toc_save_mode": "source", "last_dir": "C:/中文 图书",
-                      "future_field": {"keep": 123}, "geometry": "1100x860"}
+                      "future_field": {"keep": 123}, "geometry": "640x480"}
         config.write_text(json.dumps(customized, ensure_ascii=False), encoding="utf-8")
         actual_old = identity(executable, env, case / "old-identity.json")
         if actual_old["version"] != current or actual_old["variant"] != variant or actual_old["entrypoint"] != "gui":
@@ -260,6 +260,10 @@ def run_case(base, variant, fail_health, current, newer, successor):
                     raise AssertionError("Helper replaced the still-running old GUI")
                 close_app(executable)
             pre_update_config = config.read_bytes()
+            # Normal closing saves the actual window size, which may differ
+            # from the request because of existing minimum/screen constraints.
+            # The updater must preserve this last saved state, including size.
+            saved_preferences = None if fail_health else json.loads(pre_update_config)
             receipt = None
             deadline = time.monotonic() + 600
             while helper_process.poll() is None and time.monotonic() < deadline:
@@ -288,10 +292,16 @@ def run_case(base, variant, fail_health, current, newer, successor):
                 if not receipt or not all(receipt[key] for key in ("config_ready", "gui_ready", "core_ready")):
                     raise AssertionError("No real three-component health receipt observed")
                 report["health_receipt"] = receipt
+                if config.read_bytes() != pre_update_config:
+                    raise AssertionError("Update changed the last saved configuration bytes")
                 updated = read_config(config)
-                for key, value in customized.items():
+                for key, value in saved_preferences.items():
                     if updated[key] != value:
                         raise AssertionError(f"User preference lost: {key}")
+                report["configuration_bytes_preserved"] = True
+                report["requested_geometry"] = customized["geometry"]
+                report["geometry_before_update"] = saved_preferences["geometry"]
+                report["geometry_after_update"] = updated["geometry"]
                 actual_new = identity(executable, env, case / "new-identity.json")
                 if actual_new["version"] != newer or actual_new["variant"] != variant:
                     raise AssertionError("Actual restarted binary has wrong version/variant")
