@@ -33,6 +33,8 @@ class BookmarkWindow:
         self.inputs, self.plans, self.drop_paths = [], [], []
         self.items, self.toc_overrides, self.bookmark_rows = {}, {}, {}
         self._render_token = 0
+        self._render_future = None
+        self.updates = None
         self._render_photo = self._displayed_page = None
         self._updating = False
         self.last_dir = settings["last_dir"]
@@ -69,6 +71,8 @@ class BookmarkWindow:
         header.pack(fill="x", pady=(0, 8))
         ttk.Label(header, text="Zotero PDF 书签目录", font=("Microsoft YaHei", 14)).pack(side="left")
         ttk.Checkbutton(header, text="置顶", variable=self.topmost).pack(side="right")
+        self.update_button = ttk.Button(header, text="帮助 / 更新", command=self._show_updates)
+        self.update_button.pack(side="right", padx=8)
         self.directory_button = ttk.Button(header, text="生成 / 编辑目录…", command=self._open_editor)
         self.directory_button.pack(side="left", padx=(20, 6))
         self.inputs.append(self.directory_button)
@@ -572,7 +576,8 @@ class BookmarkWindow:
         self._render_photo = self._displayed_page = None
         self.page_status.set(f"PDF 第 {bookmark['pdf_page']} 页 · 正在生成只读预览…")
         width = max(300, min(800, self.image_canvas.winfo_width() - 16))
-        self.executor.submit(self._render_worker, self._render_token, bookmark["pdf_path"], bookmark["pdf_page"], width)
+        self._render_future = self.executor.submit(
+            self._render_worker, self._render_token, bookmark["pdf_path"], bookmark["pdf_page"], width)
 
     def _render_worker(self, token, pdf, page, width):
         if token != self._render_token or self.closed:
@@ -737,6 +742,26 @@ class BookmarkWindow:
                        "geometry": self.root.geometry().split("+", 1)[0].split("-", 1)[0],
                        **self.editor_settings}, self.settings_path)
 
+    def _show_updates(self):
+        self.enable_updates().show()
+
+    def enable_updates(self):
+        if self.updates is None:
+            from update_dialog import UpdateDialog
+            self.updates = UpdateDialog(self)
+            self.updates.start()
+        return self.updates
+
+    def update_block_reason(self):
+        if self.busy or self.pending_editor_saves:
+            return "请等待 PDF 写入、目录生成或保存任务完成后再安装更新。"
+        dialog = getattr(self.editor, "window", self.editor)
+        if dialog is not None and dialog.winfo_exists():
+            return "请先保存并关闭目录校对窗口，避免丢失未保存的修改。"
+        if self._render_future is not None and not self._render_future.done():
+            return "请等待当前 PDF 页面预览完成后再安装更新。"
+        return ""
+
     def _close(self):
         dialog = getattr(self.editor, "window", self.editor)
         if dialog is not None and dialog.winfo_exists():
@@ -751,13 +776,19 @@ class BookmarkWindow:
         except OSError as error:
             messagebox.showwarning("设置未保存", f"无法保存设置：{error}\n本次文件处理结果不受影响。", parent=self.root)
         self.closed = True
+        if self.updates is not None:
+            self.updates.close()
         self._render_token += 1
         self.root.after_cancel(self._poll_after)
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 
 
-def launch(initial_paths=None):
+def launch(initial_paths=None, settings_path=None, on_ready=None):
     root = TkinterDnD.Tk()
-    BookmarkWindow(root, initial_paths)
+    window = BookmarkWindow(root, initial_paths, settings_path)
+    window.enable_updates()
+    root.update_idletasks()
+    if on_ready is not None:
+        on_ready(window)
     root.mainloop()

@@ -1,5 +1,6 @@
 """Verify frozen CLI startup and onefile/portable TkDnD/OCR resources."""
 
+import hashlib
 from pathlib import Path
 import subprocess
 
@@ -7,6 +8,20 @@ from PyInstaller.archive.readers import CArchiveReader
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def verify_identity(executable, variant, entrypoint=None):
+    """Inspect the identity embedded in PYZ, never infer it from a path."""
+    bundle = CArchiveReader(str(executable))
+    identity = {}
+    exec(bundle.open_embedded_archive("PYZ.pyz").extract("_build_identity"), identity)
+    current = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    if identity.get("APP_VERSION") != current or identity.get("BUILD_VARIANT") != variant:
+        raise RuntimeError(f"Frozen identity does not match VERSION/{variant}: {executable}")
+    if entrypoint is not None and identity.get("BUILD_ENTRYPOINT") != entrypoint:
+        raise RuntimeError(f"Frozen entrypoint does not match {entrypoint}: {executable}")
+    print(f"Verified embedded identity: {current} / {variant}")
+    return bundle
 
 
 def verify_resources(names):
@@ -33,7 +48,7 @@ def verify_resources(names):
 
 
 def verify_portable(folder):
-    executable = folder / "ZoteroPDFBookmarks.exe"
+    executable = folder / "PDF_Bookmarks.exe"
     with executable.open("rb") as stream:
         if stream.read(2) != b"MZ":
             raise ValueError(f"Not a Windows executable: {executable}")
@@ -43,11 +58,28 @@ def verify_portable(folder):
 
 
 def main():
-    subprocess.run([str(ROOT / "dist/ZoteroPDFBookmarks-CLI.exe"), "--help"],
+    subprocess.run([str(ROOT / "dist/PDF_Bookmarks_CLI.exe"), "--help"],
                    check=True, timeout=60)
-    bundle = CArchiveReader(str(ROOT / "dist/ZoteroPDFBookmarks.exe"))
+    bundle = verify_identity(ROOT / "dist/PDF_Bookmarks.exe", "single", "gui")
     verify_resources(bundle.toc)
-    verify_portable(ROOT / "dist/portable/ZoteroPDFBookmarks")
+    verify_portable(ROOT / "dist/portable/PDF_Bookmarks")
+    verify_identity(ROOT / "dist/portable/PDF_Bookmarks/PDF_Bookmarks.exe", "portable", "gui")
+    verify_identity(ROOT / "dist/PDF_Bookmarks_CLI.exe", "single", "cli")
+    verify_identity(ROOT / "dist/updater/updater.exe", "single", "updater")
+    if "updater.exe" not in bundle.toc:
+        raise RuntimeError("Single build is missing its external updater resource")
+    updater = ROOT / "dist/portable/PDF_Bookmarks/_internal/updater.exe"
+    with updater.open("rb") as stream:
+        if stream.read(2) != b"MZ":
+            raise RuntimeError("Portable build is missing its external updater resource")
+    with (ROOT / "dist/updater/updater.exe").open("rb") as stream:
+        expected = hashlib.file_digest(stream, "sha256").hexdigest()
+    if hashlib.sha256(bundle.extract("updater.exe")).hexdigest() != expected:
+        raise RuntimeError("Single embedded updater does not match the tested helper")
+    with updater.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != expected:
+            raise RuntimeError("Portable embedded updater does not match the tested helper")
+    print("Verified Single/Portable embedded updater SHA-256 matches the tested external helper")
 
 
 if __name__ == "__main__":

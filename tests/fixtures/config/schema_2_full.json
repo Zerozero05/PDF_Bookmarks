@@ -1,0 +1,8 @@
+{
+  "schema": 2,
+  "recent_directory": "E:/文献 目录",
+  "backup": false,
+  "backup_dir": "D:/科研资料/备份",
+  "existing": "replace",
+  "future_preference": {"keep": ["我的设置", 7]}
+}

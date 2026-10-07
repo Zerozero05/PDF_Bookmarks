@@ -1,6 +1,7 @@
 """Small, independent helpers for desktop settings, file drops and page previews.
 
-Settings accept only SETTINGS_DEFAULTS keys; invalid values fall back individually.
+GUI settings expose SETTINGS_DEFAULTS keys; invalid values fall back individually.
+Saving retains unknown preferences and refuses to overwrite malformed files.
 ``dropped_pairs`` preserves PDF input order and returns None for missing/ambiguous
 JSON matches. It ignores directories; the GUI handles folder discovery separately.
 ``render_page`` reads one 1-based PDF page and returns a bounded PNG byte string.
@@ -9,70 +10,29 @@ JSON matches. It ignores directories; the GUI handles folder discovery separatel
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
-import re
-import tempfile
 
 import pymupdf
 
+from config_manager import (DEFAULT_CONFIG, load_config, sanitize_settings,
+                            save_config, settings_path)
 
-SETTINGS_DEFAULTS = {
-    "backup": True,
-    "backup_dir": "",
-    "clear_cache": False,
-    "delete_toc": False,
-    "recursive": False,
-    "existing": "skip",
-    "last_dir": "",
-    "topmost": False,
-    "geometry": "1100x860",
-    "editor_geometry": "1240x900",
-    "editor_topmost": False,
-    "toc_save_mode": "source",
-    "toc_save_dir": "",
-}
+
+SETTINGS_DEFAULTS = DEFAULT_CONFIG
 
 
 def _settings_path(path=None) -> Path:
-    if path is not None:
-        return Path(path)
-    appdata = os.environ.get("LOCALAPPDATA")
-    if not appdata:
-        raise OSError("无法定位 LOCALAPPDATA，未保存设置。")
-    return Path(appdata) / "ZoteroPDFBookmarks" / "settings.json"
+    return settings_path(path)
 
 
 def _clean_settings(settings) -> dict:
-    result = SETTINGS_DEFAULTS.copy()
-    if not isinstance(settings, dict):
-        return result
-    for name, default in SETTINGS_DEFAULTS.items():
-        value = settings.get(name, default)
-        if type(value) is not type(default):
-            continue
-        if name == "existing" and value not in {"skip", "replace"}:
-            continue
-        if name == "toc_save_mode" and value not in {"source", "custom"}:
-            continue
-        if name in {"geometry", "editor_geometry"}:
-            match = re.fullmatch(r"(\d{1,4})x(\d{1,4})(?:[+-]\d{1,6}[+-]\d{1,6})?", value)
-            if not match or not all(200 <= int(size) <= 8192 for size in match.group(1, 2)):
-                continue
-        result[name] = value
-    if "editor_topmost" not in settings:
-        result["editor_topmost"] = result["topmost"]
-    return result
+    return sanitize_settings(settings)
 
 
 def load_settings(path=None) -> dict:
     """Load whitelisted settings; a missing, unreadable or malformed file is safe."""
-    try:
-        with _settings_path(path).open("r", encoding="utf-8-sig") as stream:
-            return _clean_settings(json.load(stream))
-    except (OSError, ValueError, TypeError, RecursionError):
-        return SETTINGS_DEFAULTS.copy()
+    return load_config(path)
 
 
 def save_settings(settings, path=None) -> None:
@@ -81,22 +41,7 @@ def save_settings(settings, path=None) -> None:
     The default location is LOCALAPPDATA/ZoteroPDFBookmarks/settings.json.
     An unavailable location or failed write raises OSError for the GUI to report.
     """
-    target = _settings_path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, filename = tempfile.mkstemp(prefix=".settings.", suffix=".tmp", dir=target.parent)
-    temporary = Path(filename)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            json.dump(_clean_settings(settings), stream, ensure_ascii=False, indent=2)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+    save_config(settings, path)
 
 
 def toc_file_signature(path):

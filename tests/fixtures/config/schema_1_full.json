@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "backup": false,
+  "backup_dir": "D:/科研资料/备份",
+  "clear_cache": true,
+  "delete_toc": true,
+  "recursive": true,
+  "existing": "replace",
+  "last_dir": "E:/文献 目录",
+  "topmost": true,
+  "geometry": "1350x960+32+45",
+  "editor_geometry": "1400x1000+50+60",
+  "editor_topmost": false,
+  "toc_save_mode": "custom",
+  "toc_save_dir": "E:/自己的目录 JSON",
+  "auto_check_update": false,
+  "last_update_check": 1791302400,
+  "future_preference": {"keep": ["我的设置", 7]}
+}

@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     outputs:
       version: ${{ steps.version.outputs.version }}
     env:
@@ -56,20 +56,26 @@ jobs:
           $env:TEMP = $env:RUNNER_TEMP
           $env:TMP = $env:RUNNER_TEMP
           python -m unittest discover -s tests -v
-      - name: Build GUI with drag-and-drop and offline OCR
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --distpath dist --workpath build/gui --specpath build gui_entry.py
-      - name: Build command-line program
-        run: python -m PyInstaller --noconfirm --clean --onefile --console --additional-hooks-dir=. --name ZoteroPDFBookmarks-CLI --distpath dist --workpath build/cli --specpath build bookmarks.py
-      - name: Build portable GUI folder with offline OCR
-        run: python -m PyInstaller --noconfirm --clean --onedir --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks --contents-directory _internal --distpath dist/portable --workpath build/portable --specpath build/portable gui_entry.py
+      - name: Build external updater and embedded Single, CLI, Portable identities
+        run: python scripts/build_windows.py
       - name: Check frozen program and bundled resources
         run: python scripts/smoke_binaries.py
-      - name: Package source, licenses, EXEs and checksums
+      - name: Package source, licenses, EXEs, managed files and update manifests
         run: python scripts/package_release.py
+      - name: Verify real frozen renamed/moved updates, health checks and rollback
+        run: python scripts/test_frozen_updates.py
+      - name: Preserve frozen update failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frozen-update-diagnostics-${{ github.run_id }}
+          path: build/frozen_*.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload test build for local review
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ZoteroPDFBookmarks-Windows-x64-v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          name: PDF_Bookmarks_v${{ steps.version.outputs.version }}_win_x64_${{ github.run_number }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 30
@@ -93,21 +99,17 @@ jobs:
       - name: Download tested Windows build
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ZoteroPDFBookmarks-Windows-x64-v${{ needs.build.outputs.version }}-${{ github.run_number }}
+          name: PDF_Bookmarks_v${{ needs.build.outputs.version }}_win_x64_${{ github.run_number }}
           path: artifacts
       - name: Check downloaded asset hashes
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $expected = @(
-            "ZoteroPDFBookmarks-v$env:RELEASE_VERSION.exe",
-            "ZoteroPDFBookmarks-CLI-v$env:RELEASE_VERSION.exe",
-            "ZoteroPDFBookmarks-Windows-x64-v$env:RELEASE_VERSION.zip",
-            "ZoteroPDFBookmarks-Portable-v$env:RELEASE_VERSION.zip"
-          )
+          $prefix = "PDF_Bookmarks_v$env:RELEASE_VERSION" + '_win_x64'
+          $expected = @("$prefix.exe", "${prefix}_cli.exe", "${prefix}_full.zip", "${prefix}_portable.zip", 'update-manifest.json')
           $checked = @()
           foreach ($line in Get-Content artifacts/SHA256SUMS.txt) {
-            if ($line -notmatch '^([a-f0-9]{64})  ([A-Za-z0-9.-]+)$') { throw 'Invalid checksum row' }
+            if ($line -notmatch '^([a-f0-9]{64})  ([A-Za-z0-9_.-]+)$') { throw 'Invalid checksum row' }
             $hash = $Matches[1]
             $file = $Matches[2]
             if ($expected -notcontains $file) { throw "Unexpected asset $file" }
@@ -115,7 +117,22 @@ jobs:
             if ($actual -ne $hash) { throw "Checksum mismatch for $file" }
             $checked += $file
           }
-          if (($checked | Sort-Object -Unique).Count -ne $expected.Count) { throw 'Missing asset checksum' }
+          if ($checked.Count -ne $expected.Count -or ($checked | Sort-Object -Unique).Count -ne $expected.Count) { throw 'Missing or duplicated asset checksum' }
+          $manifest = Get-Content artifacts/update-manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $env:RELEASE_VERSION -or $manifest.app_id -ne 'com.linzh.PDFBookmarks' -or $manifest.schema -ne 1 -or $manifest.channel -ne 'stable') { throw 'Invalid release manifest identity' }
+          foreach ($variant in @('single', 'portable')) {
+            $asset = $manifest.assets.$variant
+            if ($expected -notcontains $asset.file) { throw 'Missing update variant' }
+            $file = Join-Path artifacts $asset.file
+            if ((Get-Item -LiteralPath $file).Length -ne $asset.size -or (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $asset.sha256) { throw 'Update manifest asset mismatch' }
+          }
+          $portable = "$prefix" + '_portable.zip'
+          $portableRow = Get-Content (Join-Path artifacts "$portable.sha256") -Raw
+          $portableHash = (Get-FileHash -LiteralPath (Join-Path artifacts $portable) -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($portableRow.Trim() -ne "$portableHash  $portable") { throw 'Portable checksum mismatch' }
+          $allExpected = @($expected) + @('SHA256SUMS.txt', "$portable.sha256")
+          $actualFiles = @(Get-ChildItem artifacts -File | ForEach-Object { $_.Name })
+          if (@(Compare-Object ($allExpected | Sort-Object) ($actualFiles | Sort-Object)).Count -ne 0) { throw 'Release has unexpected or missing files' }
       - name: Publish approved version without replacing an existing release
         shell: pwsh
         run: |
@@ -123,13 +140,21 @@ jobs:
           $tag = "v$env:RELEASE_VERSION"
           gh release view $tag --json id 2>$null
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; it will not be overwritten" }
-          $notes = "Windows x64 single-file GUI and CLI, plus a portable GUI ZIP. Keep the portable folder intact, including _internal. The complete Windows ZIP contains source, documentation and licenses. `n`nSee CHANGELOG.md at https://github.com/$env:GH_REPO/blob/$tag/CHANGELOG.md. `n`nVerify downloads against SHA256SUMS.txt or the portable ZIP's .sha256 file."
+          $notes = "Windows x64 版，提供 Single 单文件 GUI、Portable 便携文件夹、CLI 和完整源码包，可独立处理普通 PDF，并适配 Zotero 附件。`n`nSingle 直接运行，携带方便；Portable 整包解压后运行，省去启动时的临时解包。两者功能相同，无需 Python。Portable 须保留 _internal 和 package-manifest.json。`n`nGUI 自动更新保持 Single/Portable 类型、用户改名后的入口、现有设置及 Portable 中的未知文件；健康检查失败时回滚程序和配置，成功后清理废弃的受管理文件。CLI 通过发布页手动更新。v1.4.1 没有自动更新，首次使用新版须手动下载。CONFIG_SCHEMA 保持 1。`n`n更新记录：https://github.com/$env:GH_REPO/blob/$tag/CHANGELOG.md。`n`n下载后用 SHA256SUMS.txt 或 Portable 同名 .sha256 文件核对。update-manifest.json 描述两种 GUI 更新资产。"
           $notesPath = Join-Path $env:RUNNER_TEMP release-notes.md
           [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
           $assets = @(Get-ChildItem artifacts -File | ForEach-Object { $_.FullName })
-          $arguments = @('release', 'create', $tag, '--draft', '--title', "Zotero PDF Bookmarks $tag", '--notes-file', $notesPath)
+          $arguments = @('release', 'create', $tag, '--draft', '--title', $tag, '--notes-file', $notesPath)
           $arguments += '--verify-tag'
           gh @arguments @assets
           if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; the release remains a draft' }
+          $published = gh release view $tag --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify uploaded release assets; remains draft' }
+          $localFiles = @(Get-ChildItem artifacts -File)
+          if ($published.assets.Count -ne $localFiles.Count) { throw 'Incomplete release remains draft' }
+          foreach ($localFile in $localFiles) {
+            $uploaded = @($published.assets | Where-Object { $_.name -eq $localFile.Name })
+            if ($uploaded.Count -ne 1 -or $uploaded[0].size -ne $localFile.Length) { throw "Invalid uploaded asset $($localFile.Name); remains draft" }
+          }
           gh release edit $tag --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Publishing release failed' }

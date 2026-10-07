@@ -1,6 +1,6 @@
 # PDF_Bookmarks 完整使用说明
 
-本页说明 PDF_Bookmarks v1.4.1 的使用方式及单文件、便携文件夹两种打包形式。源码命令均在仓库根目录执行；可执行版从 [v1.4.1 发布页](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1) 下载。项目首页见 [README.md](../README.md)，维护与清理流程见 [MAINTENANCE.md](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks 的使用方式及单文件、便携文件夹两种打包形式。当前正式发行版仍是 [v1.4.1](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1)，v1.5.0 为新增自动更新的待试用版本；既有 PDF/目录功能与默认设置保留。源码命令均在仓库根目录执行。项目首页见 [README.md](../README.md)，维护流程见 [MAINTENANCE.md](MAINTENANCE.md)。
 
 当前 Windows 版：**v1.4.1**。新增可选的“写入成功后删除目录 JSON”，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级、JSON 保存目录、独立目录工作台，以及原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能保留。
 
@@ -277,19 +277,33 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 - 文件修改时间会更新，但本工具不操控 Zotero 的同步状态。需要多设备使用时，在 Zotero 发起同步，并在另一设备核对；本项目未实测你的 Zotero/WebDAV/云盘环境，不承诺立即检测或上传外部修改。
 - 若同步出现冲突，先核对时间和备份再选择版本。不要把“重置同步历史”当作常规刷新手段。
 
+## 程序自动更新（v1.5.0 及以后）
+
+在主窗口点“帮助 / 更新”查看版本、Single/Portable 类型和正式发行版页面。启动后后台检查最多每 24 小时一次，可取消自动检查；手动“检查更新”不受间隔限制。
+
+发现新版后先阅读更新内容及下载大小，点“下载更新”。下载在后台运行，可以继续处理 PDF；校验通过后才出现可用的“安装并重新启动”。安装前保存目录编辑并关闭目录工作台，等待 PDF 写入、目录识别、JSON 保存和页面预览结束，再点击安装。存在占用时程序会提示，保留当前窗口与任务。
+
+更新继续使用原程序路径和 EXE 名：Single 保持单个主 EXE，Portable 保持完整文件夹，不相互转换。Portable 根目录和主 EXE 均可改名，也可整体移至其他磁盘；须保留完整运行文件和 `package-manifest.json`。程序只清理已安装清单确定属于旧程序的文件，个人 PDF、文本、配置和自建文件夹保留；若新版文件与未知用户文件同名，则停止安装并提示处理冲突。
+
+程序更新不会重置设置。两种 GUI 仍共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`；新版默认补齐新增设置、保留未知字段，配置需要迁移时先备份并验证。新版初始化失败将恢复旧程序与旧配置；成功后删除旧程序备份和更新临时文件，仍被运行中的 helper 占用的内容由后台重试或下次启动继续清理。
+
+**从 v1.4.1 升级时须先手动下载新版本**，旧版没有更新入口。当前 v1.5.0 尚待用户试用确认，先从本地构建或 Actions 产物试用。源码运行及 CLI 使用发行版页面手动下载；程序不会覆盖 Python 解释器或把 CLI 替换为 GUI。未点击安装而直接退出时，已准备的更新会被取消；“退出时安装”和“跳过此版本”列入后续阶段。
+
+权限不足时先关闭程序并移动到可写目录重试，或明确选择以管理员权限运行；不在替换一半后请求提权。更新失败诊断保存在本程序临时更新目录的 `diagnostics`，机制与恢复说明见 [AUTO_UPDATE.md](AUTO_UPDATE.md)，验证边界见 [UPDATE_ACCEPTANCE.md](UPDATE_ACCEPTANCE.md)。
+
 ## 打包与验证
 
-在 Windows 上双击 `build_exe.cmd`：安装打包依赖、运行测试，再生成原 GUI/CLI 单文件 EXE 和新增的 GUI 便携文件夹版。原输出仍在 `dist`，便携版输出到 `dist\portable\ZoteroPDFBookmarks`，构建中间文件在 `build`。命令行等效步骤：
+在 Windows 上双击 `build_exe.cmd`：安装打包依赖、运行测试，先构建独立 updater，再生成 GUI/CLI 单文件 EXE 和 GUI 便携文件夹版。输出在 `dist`，便携版输出到 `dist\portable\PDF_Bookmarks`，构建中间文件在 `build`。命令行等效步骤：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --additional-hooks-dir=. --name ZoteroPDFBookmarks gui_entry.py
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --console --additional-hooks-dir=. --name ZoteroPDFBookmarks-CLI bookmarks.py
-.\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onedir --windowed --distpath dist\portable --workpath build\portable --specpath build\portable --additional-hooks-dir=. --name ZoteroPDFBookmarks gui_entry.py
+.\.venv\Scripts\python.exe scripts/build_windows.py
+.\.venv\Scripts\python.exe scripts/smoke_binaries.py
+.\.venv\Scripts\python.exe scripts/package_release.py
 ```
 
-便携版的入口是 `dist\portable\ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe`，必须连同 `_internal` 和运行文件夹一起分发；发布 ZIP 还随附本项目及第三方许可。两种 GUI 使用相同源码、依赖和 OCR 模型。当前构建脚本仍生成上述 `ZoteroPDFBookmarks` 名称；发布页下载文件的 `PDF_Bookmarks` 命名只在发布时调整，规则见 [MAINTENANCE.md](MAINTENANCE.md#发布命名与校验清单)。
+便携版的入口是 `dist\portable\PDF_Bookmarks\PDF_Bookmarks.exe`，必须连同 `_internal`、`package-manifest.json` 和运行文件夹一起分发；发布 ZIP 随附本项目及第三方许可。两种 GUI 使用相同源码、依赖和 OCR 模型，构建类型在打包时嵌入。打包前新增源码应已加入 Git 索引，因为完整包只收录 Git 管理的文件。发布文件与 manifest 自动生成，规则见 [MAINTENANCE.md](MAINTENANCE.md#发布命名与校验清单)。
 
 打包须在目标系统上进行，迁移前的 v1.4.1 二进制在 Windows x64、Python 3.12.14 上构建；GitHub 自动构建使用 Windows x64、Python 3.12，具体环境见对应运行日志。未进行 Windows ARM64、32 位系统或所有 Windows 版本兼容性实测。写入测试只使用自动生成的临时 PDF，覆盖中文路径、多层目录、偏移映射、已有书签、内容/批注保持、备份和失败保护，以及备份设置和缓存清理规则；真实书籍仅用于只读目录识别，未修改真实 Zotero 附件或缓存。迁移前已完成验证见 [VALIDATION.md](../VALIDATION.md)，云端测试结果以 Actions 页面为准。
 
@@ -300,6 +314,8 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 | `bookmarks_core.py` | JSON 校验、映射、可选备份、增量写入、原子替换与成功后缓存清理 |
 | `bookmarks_gui.py` / `gui_entry.py` | 中文界面、文件拖放、批量列表、目录与目标页预览 |
 | `gui_support.py` | 用户设置、拖入文件配对与只读页面渲染 |
+| `build_info.py` / `config_manager.py` | 稳定构建身份、原设置兼容、schema 与迁移事务 |
+| `updater/` / `updater_entry.py` / `update_dialog.py` | 更新检查、下载、清单、外部事务、健康确认、回滚与 GUI 入口 |
 | `toc_generation.py` | 文字/OCR 目录识别、页码建议、确认校验与 JSON 保存 |
 | `toc_editor.py` | 目录识别、映射、编辑和目标页校对窗口 |
 | `bookmarks.py` | 命令行入口 |
