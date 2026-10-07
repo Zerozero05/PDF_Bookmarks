@@ -15,15 +15,15 @@
 | 真实冻结 Single 健康失败回滚 | 新版读取 malformed 配置失败，实际恢复旧 EXE 和配置原始字节并重新启动旧 GUI，通过 |
 | 真实冻结 Portable 成功更新 | 文件夹和 EXE 改名、移动至 C 盘通过；更新后 1148 个管理文件、新增/替换资源与旧 DLL 删除核对通过，额外 PDF/txt/UserData/自建目录保留 |
 | 真实冻结 Portable 健康失败回滚 | 实际恢复旧 EXE、完整运行库、package/installed manifest 和配置原始字节，旧 GUI 重启通过 |
-| GitHub CI / commit / PR | 本页记录本机验收；远端 CI、提交与产物记录列在对应工作分支 PR 的验证说明和 Checks 中。v1.5.0 尚未正式发布 |
+| GitHub CI / commit / PR | [PR #1](https://github.com/Zerozero05/PDF_Bookmarks/pull/1) 的验证说明与 Checks 记录提交和产物；[云端运行 37604195474](https://github.com/Zerozero05/PDF_Bookmarks/actions/runs/37604195474)通过完整源码回归、七项实际构建及四个冻结升级/回滚场景，单盘环境跳过一项已在本机通过的跨盘测试。正式发行版为 v1.5.0 |
 
 冻结程序验收要求读取实际 BuildInfo、核对更名后的 EXE 字节、看到配置/GUI/PDF 核心三项健康回执，再确认 journal 提交、废弃 managed 文件清除、未知文件与设置保留、helper/备份/ZIP 最终清理。失败分支必须核对旧 EXE、旧 manifest 与配置原始字节恢复；“能启动”不算更新成功。
 
-本机上述四个冻结场景全部通过；每项均等待应用自行删除事务目录和外部清理收据，再确认用户文件原字节及安装目录无 `.old`、`.new`、`.part`、`.pdf-update-*` 残留。自动化没有代替应用执行最后清理。另对真实 GitHub v1.4.1 latest 接口和其 309 字节 SHA256SUMS 下载进行了只读校验；尚未发布的 1.5.0 完整资产线上下载不作为已执行结果。
+本机上述四个冻结场景全部通过；每项均等待应用自行删除事务目录和外部清理收据，再确认用户文件原字节及安装目录无 `.old`、`.new`、`.part`、`.pdf-update-*` 残留。自动化没有代替应用执行最后清理。此前对真实 GitHub v1.4.1 latest 接口和其 309 字节 SHA256SUMS 下载进行了只读校验；该记录不等同于从 v1.5.0 更新到未来正式版本的线上端到端验证。
 
 配置保留以旧 GUI 正常关闭后保存的完整配置为基准，逐字节及逐字段核对，包含窗口尺寸。旧窗口可能按既有最小尺寸或屏幕限制调整初始请求；冻结样本使用 640×480 请求来覆盖这一差异，更新不得重置其实际已保存的尺寸。此项保持原程序的窗口保存行为。
 
-冻结脚本通过真实外部 helper 直接发起事务，使用真实 GUI/config/PDF 核心健康流程；更新按钮、安装任务守卫、异步复制与关闭事件由真实 Tk 源码测试覆盖。构建 smoke 核对两个 GUI 所携带 helper 的内容与独立 helper 一致。当前远端正式版本仍为 v1.4.1，1.5.1 是隔离的验收版本，不上传正式发行版。
+冻结脚本通过真实外部 helper 直接发起事务，使用真实 GUI/config/PDF 核心健康流程；更新按钮、安装任务守卫、异步复制与关闭事件由真实 Tk 源码测试覆盖。构建 smoke 核对两个 GUI 所携带 helper 的内容与独立 helper 一致。v1.5.0 为正式发行版本，1.5.1 仅是隔离的验收版本，不上传正式发行版。
 
 权限和磁盘不足测试使用故障注入加真实 Windows readonly/file-lock 检查；不为测试填满真实磁盘或更改用户目录 ACL。跨盘测试在具备两个可写磁盘时执行，只有一个磁盘的 CI 明确跳过该项；符号链接测试可能因系统权限跳过，Windows 目录联接测试单独验证。真实断电不能由普通单元测试替代：自动测试用持久 journal 加安装中断模拟，检查恢复逻辑。
 
@@ -140,6 +140,6 @@ Portable 还额外验证：未知文件同名冲突拒绝（T.`test_unknown_file
 | 11 EXE 改名、12 文件夹改名、13 移动 | S02–S06、P02–P07 及冻结验证实际结果 |
 | 14 配置升级、15 失败回滚 | C03–C12、S14–S15、P17/P20/P21 |
 | 16 无旧程序残留 | S16、P11/P22 及真实冻结清理结果 |
-| 17 GitHub commit / PR / Release | 对应工作分支 PR 的验证记录与 Checks；旧 v1.4.1 Release 保留，新标签待试用确认 |
+| 17 GitHub commit / PR / Release | [PR #1](https://github.com/Zerozero05/PDF_Bookmarks/pull/1) 的验证记录与 Checks；[v1.5.0 正式发行版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.5.0)，旧 v1.4.1 Release 保留 |
 
 完整源码、冻结更新与远端构建的实际结果全部核对前，不把设计、单元测试或待执行项写成已验收完成。

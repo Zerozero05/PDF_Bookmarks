@@ -1,8 +1,8 @@
 # PDF_Bookmarks 完整使用说明
 
-本页说明 PDF_Bookmarks 的使用方式及单文件、便携文件夹两种打包形式。当前正式发行版仍是 [v1.4.1](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1)，v1.5.0 为新增自动更新的待试用版本；既有 PDF/目录功能与默认设置保留。源码命令均在仓库根目录执行。项目首页见 [README.md](../README.md)，维护流程见 [MAINTENANCE.md](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks 的使用方式及单文件、便携文件夹两种打包形式。当前正式发行版为 [v1.5.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.5.0)，新增 GUI 自动更新入口；既有 PDF/目录功能与默认设置保留。源码命令均在仓库根目录执行。项目首页见 [README.md](../README.md)，维护流程见 [MAINTENANCE.md](MAINTENANCE.md)。
 
-当前 Windows 版：**v1.4.1**。新增可选的“写入成功后删除目录 JSON”，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级、JSON 保存目录、独立目录工作台，以及原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能保留。
+当前 Windows 版：**v1.5.0**。v1.4.1 增加的“写入成功后删除目录 JSON”仍为可选项，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级、JSON 保存目录、独立目录工作台，以及原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能保留。
 
 v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处理列表、预览后的书签树、目标页图片和处理记录现在能够正常显示和点击。关闭旧程序后换用新版 EXE 即可，原有设置自动保留；PDF 写入、备份、缓存清理和命令行逻辑没有改动。
 
@@ -16,11 +16,11 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 | 下载文件 | 打开方式 |
 | --- | --- |
-| [PDF_Bookmarks_v1.4.1_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
-| [PDF_Bookmarks_v1.4.1_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `ZoteroPDFBookmarks\ZoteroPDFBookmarks.exe` |
-| [PDF_Bookmarks_v1.4.1_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.4.1/PDF_Bookmarks_v1.4.1_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `ZoteroPDFBookmarks\dist\ZoteroPDFBookmarks.exe` |
+| [PDF_Bookmarks_v1.5.0_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.5.0/PDF_Bookmarks_v1.5.0_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
+| [PDF_Bookmarks_v1.5.0_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.5.0/PDF_Bookmarks_v1.5.0_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe` |
+| [PDF_Bookmarks_v1.5.0_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.5.0/PDF_Bookmarks_v1.5.0_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
-便携版须让 EXE、`_internal` 与其余文件保留在同一文件夹内；移动时移动整个 `ZoteroPDFBookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。单文件 GUI、CLI 和完整包使用 `SHA256SUMS.txt` 校验；便携 ZIP 使用 `PDF_Bookmarks_v1.4.1_win_x64_portable.zip.sha256` 校验。此次只调整发布页下载文件名，ZIP 内部文件名、程序窗口名称和设置路径保持原样。
+便携版须让 EXE、`_internal`、`package-manifest.json` 与其余文件保留在同一文件夹内；移动时移动整个 `PDF_Bookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。下载文件使用 `SHA256SUMS.txt` 校验；便携 ZIP 另附 `PDF_Bookmarks_v1.5.0_win_x64_portable.zip.sha256`。`update-manifest.json` 供程序检查更新使用。原设置路径保持不变；历史 v1.4.1 的 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。
 
 1. 从发布页下载所选程序，按上表打开。程序面向 Windows 10/11 x64。
 2. 找到需要添加或更新书签的 PDF，关闭这本 PDF 的阅读窗口。
@@ -161,7 +161,7 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 
 ## 命令行
 
-源码入口：`launch_cli.cmd`；本地构建或完整包中的可执行入口：`dist\ZoteroPDFBookmarks-CLI.exe`；发布页单独下载的 CLI 文件名为 `PDF_Bookmarks_v1.4.1_win_x64_cli.exe`。下面的命令在项目文件夹中运行，也可把 `launch_cli.cmd` 替换为所用 CLI 的实际路径。
+源码入口：`launch_cli.cmd`；本地构建或完整包中的可执行入口：`dist\PDF_Bookmarks_CLI.exe`；发布页单独下载的 CLI 文件名为 `PDF_Bookmarks_v1.5.0_win_x64_cli.exe`。下面的命令在项目文件夹中运行，也可把 `launch_cli.cmd` 替换为所用 CLI 的实际路径。
 
 ```powershell
 # 预览同名目录文件
@@ -287,7 +287,7 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 
 程序更新不会重置设置。两种 GUI 仍共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`；新版默认补齐新增设置、保留未知字段，配置需要迁移时先备份并验证。新版初始化失败将恢复旧程序与旧配置；成功后删除旧程序备份和更新临时文件，仍被运行中的 helper 占用的内容由后台重试或下次启动继续清理。
 
-**从 v1.4.1 升级时须先手动下载新版本**，旧版没有更新入口。当前 v1.5.0 尚待用户试用确认，先从本地构建或 Actions 产物试用。源码运行及 CLI 使用发行版页面手动下载；程序不会覆盖 Python 解释器或把 CLI 替换为 GUI。未点击安装而直接退出时，已准备的更新会被取消；“退出时安装”和“跳过此版本”列入后续阶段。
+**从 v1.4.1 升级时须先手动下载 v1.5.0**，旧版没有更新入口。先关闭旧程序，再运行新 Single EXE 或完整解压的新 Portable 文件夹，原设置自动沿用。源码运行及 CLI 使用发行版页面手动下载；程序不会覆盖 Python 解释器或把 CLI 替换为 GUI。未点击安装而直接退出时，已准备的更新会被取消；“退出时安装”和“跳过此版本”列入后续阶段。
 
 权限不足时先关闭程序并移动到可写目录重试，或明确选择以管理员权限运行；不在替换一半后请求提权。更新失败诊断保存在本程序临时更新目录的 `diagnostics`，机制与恢复说明见 [AUTO_UPDATE.md](AUTO_UPDATE.md)，验证边界见 [UPDATE_ACCEPTANCE.md](UPDATE_ACCEPTANCE.md)。
 

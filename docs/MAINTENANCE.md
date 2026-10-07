@@ -1,6 +1,6 @@
 # 版本维护与本地文件管理
 
-正式源代码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，正式 Windows 下载放在 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)。PDF_Bookmarks 可独立处理普通 PDF，也适配 Zotero 附件。当前源码版本为 v1.5.0，增加事务自动更新；正式发行版仍保留 v1.4.1，先试用、确认后再发布新版本。原设置位置、目录 JSON 格式、CLI 参数、PDF 写入与备份默认值继续兼容。
+正式源代码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，正式 Windows 下载放在 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)。PDF_Bookmarks 可独立处理普通 PDF，也适配 Zotero 附件。当前版本为 v1.5.0，增加事务自动更新；历史 v1.4.1 发行版继续保留。原设置位置、目录 JSON 格式、CLI 参数、PDF 写入与备份默认值继续兼容。
 
 ## 后续升级流程
 
@@ -12,7 +12,7 @@
 
 此前已授权的首次迁移已完成上传和初始化；本次另经用户确认调整仓库名称、介绍和发布文件名。以上确认流程用于后续新版本。不要把“可以升级”理解为所有未来版本均已批准发布。
 
-用户明确授权时，可仅向现有版本追加不同打包形式，应用版本号保持不变；不得移动原标签或替换原程序包。此前 v1.4.1 仅追加便携 ZIP 和它的 `.zip.sha256`，原三个程序包及 `SHA256SUMS.txt` 保留；本次只重命名下载资产并同步校验文件中的名称，不重建程序、不移动标签。未来新版本由自动发布流程生成包含便携版的总校验文件。
+用户明确授权时，可仅向现有版本追加不同打包形式，应用版本号保持不变；不得移动原标签或替换原程序包。此前 v1.4.1 仅追加便携 ZIP 和它的 `.zip.sha256`，原三个程序包及 `SHA256SUMS.txt` 保留；2026-10-06 仓库整理时只重命名下载资产并同步校验文件中的名称，不重建程序、不移动标签。新版本由自动发布流程生成包含便携版的总校验文件。
 
 ## 发布命名与校验清单
 

@@ -1,6 +1,6 @@
 # 自动更新说明
 
-v1.5.0 引入 Windows GUI 完整包更新。当前代码先供试用，正式发布须用户确认；v1.4.1 的标签、Release 和历史资产保留。v1.4.1 不包含此更新器，第一次升级需手动下载新版本。
+v1.5.0 引入 Windows GUI 完整包更新；v1.4.1 的标签、Release 和历史资产保留。v1.4.1 不包含此更新器，第一次升级需从发行版页面手动下载新版本。
 
 ## 使用方法
 
@@ -19,7 +19,7 @@ Single 自动更新始终得到 Single；Portable 始终得到 Portable。当前
 | 字段 | 当前值及用途 |
 | --- | --- |
 | `APP_ID` | `com.linzh.PDFBookmarks`，与仓库、EXE 及目录名称解耦 |
-| `APP_VERSION` | 从 `VERSION` 读取，当前待试用版本 `1.5.0` |
+| `APP_VERSION` | 从 `VERSION` 读取，当前版本 `1.5.0` |
 | `BUILD_VARIANT` | 构建时嵌入 `single` 或 `portable`，不按文件名/目录猜测 |
 | `UPDATE_SCHEMA` | `1`，不兼容协议安全停止并提示手动下载 |
 | `CONFIG_SCHEMA` | `1`，与应用版本解耦，本次没有结构迁移 |
