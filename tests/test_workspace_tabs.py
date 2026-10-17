@@ -331,6 +331,8 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertEqual(json.loads(target.read_text(encoding="utf8"))["bookmarks"][0]["title"], "第一章 基础")
 
     def test_separate_page_size_and_topmost_preferences_survive_close_and_reopen(self):
+        # Keep off-screen size checks independent of the CI desktop's default cap.
+        self.root.maxsize(2000, 1400)
         self.root.geometry("1040x780+32000+32000")
         self.root.deiconify()
         self.main.topmost.set(False)
@@ -358,6 +360,7 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertFalse(saved["topmost"])
         self.assertTrue(saved["editor_topmost"])
         self.root = TkinterDnD.Tk()
+        self.root.maxsize(2000, 1400)
         self.root.withdraw()
         self.root.report_callback_exception = lambda *args, errors=self.callback_errors: errors.append(args)
         self.main = bookmarks_gui.BookmarkWindow(self.root, settings_path=self.settings)
@@ -371,6 +374,7 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertTrue(self.root.attributes("-topmost"))
 
     def test_hidden_editor_save_preferences_do_not_capture_main_page_geometry(self):
+        self.root.maxsize(2000, 1400)
         self.root.geometry("1040x780+32000+32000")
         self.root.deiconify()
         self.root.update()
