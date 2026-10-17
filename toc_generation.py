@@ -28,6 +28,8 @@ class DraftEntry:
     confidence: str = "待确认"
     note: str = ""
     confirmed: bool = False
+    source_page: int | None = None
+    source_rect: tuple[float, float, float, float] | None = None
 
 
 @dataclass
@@ -53,6 +55,7 @@ class _Line:
     column: int = 0
     left: float = 0
     right: float | None = None
+    rect: tuple[float, float, float, float] | None = None
 
 
 _PART = re.compile(r"^(?:第\s*[\d一二三四五六七八九十百零〇]+\s*[篇部卷]|part\s+(?:[\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b)", re.I)
@@ -232,10 +235,12 @@ def _engine():
     return _OCR
 
 
-def _group_boxes(boxes, *, column_mode="auto", page_width=None):
+def _group_boxes(boxes, *, column_mode="auto", page_width=None, split=None):
     """Keep independent TOC columns separate before joining baseline boxes."""
     if not boxes:
         return []
+    if split is not None:
+        return _forced_columns(boxes, page_width, split=split)
     if column_mode == "single":
         return _baseline_lines(boxes)
     if column_mode == "double":
@@ -286,7 +291,7 @@ def _group_boxes(boxes, *, column_mode="auto", page_width=None):
     return best[1] if best is not None else ordinary
 
 
-def _forced_columns(boxes, page_width):
+def _forced_columns(boxes, page_width, *, split=None):
     """Use a geometric gutter for the user's explicit two-column choice."""
     left_edge = 0 if page_width is not None else min(box[0] for box in boxes)
     right_edge = page_width if page_width is not None else max(box[2] for box in boxes)
@@ -309,7 +314,15 @@ def _forced_columns(boxes, page_width):
     extent = right_edge - left_edge
     gutters = [(end + start) / 2 for (_, end), (start, _) in zip(occupied, occupied[1:])
                if left_edge + extent * .2 < (end + start) / 2 < left_edge + extent * .8]
-    boundary = min(gutters, key=lambda value: abs(value - middle)) if gutters else middle
+    boundary = split if split is not None else min(gutters, key=lambda value: abs(value - middle)) if gutters else middle
+    if split is not None:
+        left_boxes = [box for box in boxes if box[2] <= boundary]
+        right_boxes = [box for box in boxes if box[0] >= boundary]
+        if _parse(_baseline_lines(left_boxes)) and _parse(_baseline_lines(right_boxes)):
+            # Keep the user's gutter, but avoid excessive outer whitespace
+            # shrinking the column detector enough to miss entire TOC rows.
+            left_edge = max(left_edge, min(box[0] for box in left_boxes) - 5)
+            right_edge = min(right_edge, max(box[2] for box in right_boxes) + 5)
     left_lines = _baseline_lines([box for box in boxes if box[2] <= boundary],
                                  column=0, left=left_edge, right=boundary)
     right_lines = _baseline_lines([box for box in boxes if box[0] >= boundary],
@@ -327,11 +340,13 @@ def _baseline_lines(boxes, *, column=0, left=0, right=None):
         middle, height = (y0 + y1) / 2, max(y1 - y0, 1)
         match = next((row for row in reversed(rows[-3:]) if abs(row[0] - middle) <= max(row[1], height) * .48), None)
         if match is None:
-            rows.append([middle, height, [(x0, text, score)]])
+            rows.append([middle, height, [(x0, text, score, x1, y0, y1)]])
         else:
-            match[2].append((x0, text, score))
+            match[2].append((x0, text, score, x1, y0, y1))
             match[1] = max(match[1], height)
-    return [_Line(" ".join(part[1] for part in sorted(parts)), min(part[0] for part in parts), middle, height, min(part[2] for part in parts), [(int(match.group(1)), part[0]) for part in parts if (match := _NUM.match(part[1]))], column, left, right) for middle, height, parts in rows]
+    return [_Line(" ".join(part[1] for part in sorted(parts)), min(part[0] for part in parts), middle, height, min(part[2] for part in parts), [(int(match.group(1)), part[0]) for part in parts if (match := _NUM.match(part[1]))], column, left, right,
+                  (min(part[0] for part in parts), min(part[4] for part in parts),
+                   max(part[3] for part in parts), max(part[5] for part in parts))) for middle, height, parts in rows]
 
 
 def _clean(text):
@@ -568,38 +583,46 @@ def _hierarchy(parts, layout):
     return result
 
 
-def _parse(lines, *, layout=None):
+def _parse(lines, *, layout=None, sources=None):
     parsed = []
     pending = ""
     pending_x = None
+    pending_rect = None
     column = None
     for line in lines:
         if line.column != column:
-            pending, pending_x, column = "", None, line.column
+            pending, pending_x, pending_rect, column = "", None, None, line.column
         raw = line.text.strip()
         heading = _CHAPTER.match(raw)
         if heading and not raw[heading.end():].strip():
             pending, pending_x = _clean(raw), line.x
+            pending_rect = line.rect
             continue
         match = _PAGE.match(raw)
         if not match:
             if _CHAPTER.match(raw) or re.match(r"^[§S]?\s*\d+[.．]\d+", raw):
                 pending = _clean(raw)
                 pending_x = line.x
+                pending_rect = line.rect
             continue
         title = _clean(match.group(1))
         if not title or _normal(title) in {"目录", "contents", "tableofcontents"} or _NUM.match(title):
             continue
         x = line.x
+        rect = line.rect
         if pending and not (_CHAPTER.match(title) or re.match(r"^[§S]?\s*\d+[.．]\d+", title)):
             title = pending + " " + title
             x = pending_x
+            rect = (tuple(pymupdf.Rect(pending_rect) | pymupdf.Rect(rect))
+                    if pending_rect is not None and rect is not None else None)
         pending = ""
         page_text = match.group(2)
         printed = int(page_text) if page_text.isdecimal() and int(page_text) > 0 else None
         parsed.append((title, printed, line.score, page_text))
         if layout is not None:
             layout.append((line.column, x, line.left, line.right))
+        if sources is not None:
+            sources.append(rect)
     return parsed
 
 
@@ -740,10 +763,12 @@ def _recover_ocr_rows(image, lines, engine, cancel):
         if starts:
             candidate.x = float(max(0, int(line.left) - 5) + min(starts))
         candidate.score = min(line.score, candidate.score)
+        candidate.rect = (candidate.x, max(0, line.y - line.height * .8),
+                          min(image.shape[1], line.right), min(image.shape[0], line.y + line.height * .8))
         lines[lines.index(line)] = candidate
 
 
-def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
+def _ocr_lines(pix, cancel=None, *, column_mode="auto", split=None):
     """Compare TOC orientations; long leaders can fool the angle classifier."""
     engine = _engine()
     original_cls = engine.use_cls
@@ -760,8 +785,8 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
             for box, text, score in zip(output.boxes, output.txts, output.scores)
         ]
         if crop is None:
-            return (_group_boxes(boxes) if column_mode == "auto" else
-                    _group_boxes(boxes, column_mode=column_mode, page_width=pix.width))
+            return (_group_boxes(boxes) if column_mode == "auto" and split is None else
+                    _group_boxes(boxes, column_mode=column_mode, page_width=pix.width, split=split))
         return _baseline_lines(boxes, column=column, left=left, right=right)
 
     def quality(lines):
@@ -771,20 +796,22 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
     try:
         lines = recognize(True)
         leaders = sum(bool(re.search(r"[.．·…⋯](?:\s*[.．·…⋯]){3}", line.text)) for line in lines)
-        if column_mode == "double" or _looks_toc(lines, _parse(lines)) or leaders >= 2:
+        if column_mode == "double" or split is not None or _looks_toc(lines, _parse(lines)) or leaders >= 2:
             upright = recognize(False)
             if quality(upright) > quality(lines):
                 lines = upright
             bounds = sorted({(line.column, line.left, line.right) for line in lines if line.right is not None})
-            if column_mode == "double" and len(bounds) != 2:
-                bounds = [(0, 0, pix.width / 2), (1, pix.width / 2, pix.width)]
+            if (column_mode == "double" or split is not None) and len(bounds) != 2:
+                boundary = split if split is not None else pix.width / 2
+                bounds = [(0, 0, boundary), (1, boundary, pix.width)]
             if len(bounds) == 2:
                 import numpy as np
                 pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
                 columns = []
                 for column, left, right in bounds:
-                    start = max(0, int(left) - 5)
-                    crop = pixels[:, start:min(pix.width, int(right) + 5)]
+                    margin = 0 if split is not None else 5
+                    start = max(0, int(left) - margin)
+                    crop = pixels[:, start:min(pix.width, int(right) + margin)]
                     variants = [recognize(use_cls, crop, start=start, column=column, left=left, right=right)
                                 for use_cls in (True, False)]
                     columns.extend(_merge_ocr_lines([line for line in lines if line.column == column],
@@ -793,6 +820,12 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
                 if columns:
                     first = min(line.y for line in columns)
                     spanning = [line for line in lines if line.right is None]
+                    if split is not None:
+                        # Two independently recovered rows supersede an old OCR
+                        # box that merged both sides of the user's separator.
+                        spanning = [line for line in spanning if not all(any(
+                            row.column == column and abs(row.y - line.y) <= max(row.height, line.height) * .6
+                            and _parse([row]) for row in columns) for column in (0, 1))]
                     lines = ([line for line in spanning if line.y < first] + columns
                              + [line for line in spanning if line.y >= first])
             _refine_ocr_titles(pix, lines, engine, cancel)
@@ -802,8 +835,55 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
         engine.use_cls = original_cls
 
 
-def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None, column_mode="auto"):
-    """Recognize a reviewable draft without changing the PDF or its caches."""
+def _page_regions(value, count):
+    """Validate page-local display coordinates without changing caller data."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise BookmarkError("目录识别区域须按实际 PDF 页码指定。")
+    result = {}
+    for number, options in value.items():
+        if type(number) is not int or not 1 <= number <= count:
+            raise BookmarkError(f"识别区域页码必须在 PDF 的 1–{count} 页之间。")
+        if not isinstance(options, dict) or set(options) - {"rect", "split", "mode"}:
+            raise BookmarkError("识别区域仅支持 rect、split 和 mode。")
+        mode = options.get("mode")
+        if "mode" in options and mode not in ("auto", "single", "double"):
+            raise BookmarkError("目录栏数须选择自动、单栏或双栏。")
+        rect = options.get("rect", (0, 0, 1, 1))
+        if (not isinstance(rect, (list, tuple)) or len(rect) != 4
+                or any(type(v) not in (int, float) or not 0 <= v <= 1 for v in rect)
+                or not (rect[0] < rect[2] and rect[1] < rect[3])):
+            raise BookmarkError("识别区域须为 0–1 范围内的有效矩形 [左, 上, 右, 下]。")
+        split = options.get("split")
+        if "split" in options and (type(split) not in (int, float) or not rect[0] < split < rect[2]):
+            raise BookmarkError("人工分栏线须位于识别区域内部，按整页宽度的 0–1 比例指定。")
+        result[number] = dict(options)
+        if "rect" in options:
+            result[number]["rect"] = tuple(rect)
+    return result
+
+
+def _normalized_source(rect, page_rect):
+    if rect is None:
+        return None
+    clipped = pymupdf.Rect(rect) & page_rect
+    if clipped.is_empty:
+        return None
+    return ((clipped.x0 - page_rect.x0) / page_rect.width,
+            (clipped.y0 - page_rect.y0) / page_rect.height,
+            (clipped.x1 - page_rect.x0) / page_rect.width,
+            (clipped.y1 - page_rect.y0) / page_rect.height)
+
+
+def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None, column_mode="auto", page_regions=None):
+    """Recognize a reviewable draft without changing the PDF or its caches.
+
+    ``page_regions`` maps actual PDF pages to optional normalized display
+    ``rect``, ``split`` and per-page ``mode``. A separator overrides automatic
+    layout, but regions never restrict the independent body-page evidence.
+    Observed source locations stay in the draft and are not exported to JSON.
+    """
     if column_mode not in ("auto", "single", "double"):
         raise BookmarkError("目录栏数须选择自动、单栏或双栏。")
     path = Path(pdf_path).expanduser().absolute()
@@ -815,6 +895,7 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
         if not doc.is_pdf or doc.needs_pass or doc.page_count < 1:
             raise BookmarkError("PDF 为空、无法读取或需要密码。")
         count = doc.page_count
+        regions = _page_regions(page_regions, count)
         for value, name in ((toc_start, "目录起始页"), (toc_end, "目录结束页")):
             if value is not None and not 1 <= _integer(value, name, positive=True) <= count:
                 raise BookmarkError(f"{name} 必须在 PDF 的 1–{count} 页之间。")
@@ -832,32 +913,80 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
 
         cache, methods = {}, set()
 
-        def read(number):
+        def read(number, *, directory=True):
             _cancelled(cancel)
-            if number not in cache:
+            region = regions.get(number) if directory else None
+            key = (number, bool(region))
+            if key not in cache:
                 report(f"读取 PDF 第 {number}/{count} 页……")
                 page = doc[number - 1]
                 words = page.get_text("words")
+                clip = page.rect
+                mode = region.get("mode", column_mode) if region else column_mode
+                split = None
+                if region:
+                    x0, y0, x1, y1 = region.get("rect", (0, 0, 1, 1))
+                    clip = pymupdf.Rect(x0 * page.rect.width, y0 * page.rect.height,
+                                        x1 * page.rect.width, y1 * page.rect.height)
+                    selected = []
+                    for a, b, c, d, text, *_ in words:
+                        bounds = pymupdf.Rect(a, b, c, d) * page.rotation_matrix
+                        if clip.contains(bounds):
+                            selected.append((bounds.x0 - clip.x0, bounds.y0 - clip.y0,
+                                             bounds.x1 - clip.x0, bounds.y1 - clip.y0, text))
+                    words = selected
+                    if "split" in region:
+                        split = region["split"] * page.rect.width - clip.x0
                 useful = "".join(str(word[4]) for word in words)
-                if len(useful) >= 8 and useful.count("�") < len(useful) * .1:
+                if len(useful) >= 8 and useful.count("�") < len(useful) * .1 and not (region and page.rotation):
                     boxes = [(a, b, c, d, str(text), 1.0) for a, b, c, d, text, *_ in words]
-                    lines = (_group_boxes(boxes) if column_mode == "auto" else
-                             _group_boxes(boxes, column_mode=column_mode, page_width=page.rect.width))
+                    lines = (_group_boxes(boxes) if mode == "auto" and split is None else
+                             _group_boxes(boxes, column_mode=mode, page_width=clip.width, split=split))
                     width, height = page.rect.width, page.rect.height
+                    for line in lines:
+                        if region:
+                            line.x += clip.x0
+                            line.y += clip.y0
+                            line.left += clip.x0
+                            line.numbers = [(number, x + clip.x0) for number, x in line.numbers]
+                            if line.right is not None:
+                                line.right += clip.x0
+                            bounds = (pymupdf.Rect(line.rect) + (clip.x0, clip.y0, clip.x0, clip.y0)
+                                      if line.rect is not None else None)
+                        else:
+                            bounds = pymupdf.Rect(line.rect) * page.rotation_matrix if line.rect is not None else None
+                        line.rect = _normalized_source(bounds, page.rect)
                     methods.add("文字提取")
                 else:
                     report(f"本地 OCR：PDF 第 {number}/{count} 页……")
                     scale = min(4.0, 1900 / max(page.rect.width, page.rect.height))
-                    pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
-                    lines = (_ocr_lines(pix, cancel) if column_mode == "auto" else
-                             _ocr_lines(pix, cancel, column_mode=column_mode))
+                    pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False,
+                                          **({"clip": clip} if region else {}))
+                    if pix.width < 1 or pix.height < 1:
+                        raise BookmarkError("识别区域过小，请扩大后再试。")
+                    split_pixels = region["split"] * page.rect.width * scale - pix.x if split is not None else None
+                    lines = (_ocr_lines(pix, cancel) if mode == "auto" and split_pixels is None else
+                             _ocr_lines(pix, cancel, column_mode=mode, **({"split": split_pixels} if split_pixels is not None else {})))
                     width, height = pix.width, pix.height
+                    for line in lines:
+                        bounds = (tuple((value + (pix.x if index % 2 == 0 else pix.y)) / scale
+                                        for index, value in enumerate(line.rect)) if line.rect is not None else None)
+                        line.rect = _normalized_source(bounds, page.rect)
+                        if region:
+                            line.x, line.y = (line.x + pix.x) / scale, (line.y + pix.y) / scale
+                            line.height /= scale
+                            line.left = (line.left + pix.x) / scale
+                            line.numbers = [(number, (x + pix.x) / scale) for number, x in line.numbers]
+                            if line.right is not None:
+                                line.right = (line.right + pix.x) / scale
+                    if region:
+                        width, height = page.rect.width, page.rect.height
                     methods.add("本地 OCR")
                 _cancelled(cancel)
-                cache[number] = (lines, width, height)
-            return cache[number]
+                cache[key] = (lines, width, height)
+            return cache[key]
 
-        toc_pages, parts, layout = [], [], []
+        toc_pages, parts, layout, locations = [], [], [], []
         first = toc_start
         if first is None:
             for number in range(1, min(count, 25) + 1):
@@ -871,26 +1000,29 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
         end = toc_end if toc_end is not None else min(count, first + 14)
         for number in range(first, end + 1):
             lines, width, _ = read(number)
-            page_layout = []
-            parsed = _parse(lines, layout=page_layout)
+            page_layout, source_rects = [], []
+            parsed = _parse(lines, layout=page_layout, sources=source_rects)
             numbered = sum(bool(_CHAPTER.match(title) or re.match(r"^[§S]?\s*\d+[.．]\d+", title)) for title, _, _, _ in parsed)
             continuation = parsed and (numbered >= 2 or any(_ROOT.match(title) for title, _, _, _ in parsed) or _looks_toc(lines, parsed))
             if toc_end is None and number > first and not continuation:
                 break
             toc_pages.append(number)
             parts.extend(parsed)
+            locations.extend((number, rect) for rect in source_rects)
             layout.extend(((number, column), (x - left) / (right - left) if right is not None else x / width)
                           for column, x, left, right in page_layout)
         if not parts:
             raise BookmarkError("指定页未识别出标题和页码，请检查目录页范围或使用手工编辑。")
         entries = [DraftEntry(1, "目录", None, first, "高", "目录起始 PDF 页。")]
         seen, notes = set(), ["自动识别结果均未确认；请检查标题、层级与目标页后再导出或写入。"]
-        for (title, printed, score, page_text), (level, hierarchy_note) in zip(parts, _hierarchy(parts, layout)):
+        for (title, printed, score, page_text), (level, hierarchy_note), (number, source_rect) in zip(parts, _hierarchy(parts, layout), locations):
             key = (title, printed)
             if key in seen:
                 continue
             seen.add(key)
             entry = DraftEntry(level, title, printed, confidence="中" if score >= .92 else "低", note="文字提取标题，需检查。" if score == 1.0 else f"OCR 标题分数 {score:.2f}，需检查错字。")
+            if source_rect is not None:
+                entry.source_page, entry.source_rect = number, source_rect
             if hierarchy_note:
                 entry.note += " " + hierarchy_note
             if printed is None:
@@ -898,7 +1030,7 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
             if _FRONT.match(title):
                 entry.printed_page = None
                 entry.note += f" 前置部分的 {page_text} 可能另起页码，不套用正文偏移。"
-                target = next((number for number in range(1, first) if any(_normal(line.text) == _normal(title) for line in read(number)[0])), None)
+                target = next((number for number in range(1, first) if any(_normal(line.text) == _normal(title) for line in read(number, directory=False)[0])), None)
                 entry.pdf_page = target
             entries.append(entry)
         draft = Draft(path, count, entries, toc_pages, None, " + ".join(sorted(methods)), notes)
@@ -917,7 +1049,7 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
             return _format_generated_titles(draft)
 
         def footer(number):
-            lines, width, height = read(number)
+            lines, width, height = read(number, directory=False)
             numbers = []
             for line in lines:
                 if line.y < height * .12 or line.y > height * .88:
@@ -950,7 +1082,7 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
             if not 1 <= target <= count:
                 conflicts.append(f"{entry.title} 推算目标超出范围")
                 continue
-            lines = read(target)[0]
+            lines = read(target, directory=False)[0]
             numbers = footer(target)
             title_key = _normal(entry.title)
             heading = any(title_key and (title_key in _normal(line.text) or _normal(line.text) in title_key and len(_normal(line.text)) >= 5) for line in lines[:12])

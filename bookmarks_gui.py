@@ -13,14 +13,15 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 
 from bookmarks_core import discover_pairs, inspect_pdf, write_plan
 from gui_support import (delete_written_toc, dropped_pairs, load_settings, render_page,
-                         save_settings, toc_file_signature)
+                         save_settings, settings_path, toc_file_signature)
 
 
 class BookmarkWindow:
     def __init__(self, root, initial_paths=None, settings_path=None):
         settings = load_settings(settings_path)
         self.root, self.settings_path = root, settings_path
-        root.title("Zotero PDF 原地添加书签目录")
+        self._main_geometry = settings["geometry"]
+        root.title("PDF_Bookmarks · PDF 书签目录")
         root.geometry(settings["geometry"])
         root.minsize(900, 650)
         self.events = queue.Queue()
@@ -55,21 +56,30 @@ class BookmarkWindow:
         self._build()
         self._apply_topmost()
         self._register_drop()
+        self._variable_traces = []
         for variable in (self.mode, self.pdf, self.toc, self.folder, self.recursive,
                          self.existing, self.backup, self.backup_dir, self.clear_cache, self.delete_toc):
-            variable.trace_add("write", self._invalidate)
-        self.topmost.trace_add("write", self._apply_topmost)
+            self._variable_traces.append((variable, variable.trace_add("write", self._invalidate)))
+        self._variable_traces.append((self.topmost, self.topmost.trace_add("write", self._apply_topmost)))
         if initial_paths:
             self._handle_drop_paths(initial_paths)
         root.protocol("WM_DELETE_WINDOW", self._close)
         self._poll_after = root.after(80, self._poll)
 
     def _build(self):
-        outer = ttk.Frame(self.root, padding=10)
+        self.workspace_tabs = ttk.Notebook(self.root)
+        self.workspace_tabs.pack(fill="both", expand=True)
+        self.main_page = ttk.Frame(self.workspace_tabs)
+        self.editor_page = ttk.Frame(self.workspace_tabs)
+        self.workspace_tabs.add(self.main_page, text="主界面 · 预览与写入")
+        self.workspace_tabs.add(self.editor_page, text="目录工作台 · 生成与编辑")
+        self._active_workspace = str(self.main_page)
+        self.workspace_tabs.bind("<<NotebookTabChanged>>", self._workspace_changed)
+        outer = ttk.Frame(self.main_page, padding=10)
         outer.pack(fill="both", expand=True)
         header = ttk.Frame(outer)
         header.pack(fill="x", pady=(0, 8))
-        ttk.Label(header, text="Zotero PDF 书签目录", font=("Microsoft YaHei", 14)).pack(side="left")
+        ttk.Label(header, text="PDF_Bookmarks", font=("Microsoft YaHei", 14)).pack(side="left")
         ttk.Checkbutton(header, text="置顶", variable=self.topmost).pack(side="right")
         self.update_button = ttk.Button(header, text="帮助 / 更新", command=self._show_updates)
         self.update_button.pack(side="right", padx=8)
@@ -227,7 +237,46 @@ class BookmarkWindow:
             widget.configure(state="disabled" if self.busy or not self.backup.get() else "normal")
 
     def _apply_topmost(self, *_):
-        self.root.attributes("-topmost", self.topmost.get())
+        if self._active_workspace == str(self.main_page):
+            self.root.attributes("-topmost", self.topmost.get())
+
+    def _workspace_changed(self, _event=None):
+        if self.closed:
+            return
+        selected = self.workspace_tabs.select()
+        if selected == str(self.editor_page) and (self.editor is None or self.editor.closed):
+            if self.busy:
+                self.workspace_tabs.select(self.main_page)
+                return
+            self._open_editor()
+            if self.editor is None:
+                return
+        if selected == self._active_workspace:
+            return
+        if self._active_workspace == str(self.main_page):
+            if self.root.winfo_ismapped():
+                self._main_geometry = self.root.geometry()
+        elif self.root.winfo_ismapped():
+            self.editor_settings["editor_geometry"] = self.root.geometry()
+            if self.editor is not None and not self.editor.closed:
+                self.editor._persist_settings()
+        self._active_workspace = selected
+        if selected == str(self.editor_page):
+            self.root.minsize(1000, 760)
+            self.root.geometry(self.editor_settings["editor_geometry"])
+            self.root.attributes("-topmost", self.editor.topmost.get())
+        else:
+            self.root.minsize(900, 650)
+            self.root.geometry(self._main_geometry)
+            self._apply_topmost()
+        self.root.update_idletasks()
+
+    def _editor_closed(self):
+        self.workspace_tabs.select(self.main_page)
+        self._workspace_changed()
+
+    def _editor_task_blocked(self):
+        return self.busy
 
     def _initialdir(self):
         return self.last_dir if self.last_dir and Path(self.last_dir).is_dir() else None
@@ -275,7 +324,7 @@ class BookmarkWindow:
 
         dialog = getattr(self.editor, "window", self.editor)
         if dialog is not None and dialog.winfo_exists():
-            dialog.lift()
+            self.workspace_tabs.select(self.editor_page)
             return
         pdf, toc = self.pdf.get().strip(), self.toc.get().strip()
         selection = self.file_tree.selection()
@@ -287,7 +336,12 @@ class BookmarkWindow:
         self._render_token += 1
         self.editor = open_editor(self.root, self.executor, pdf_path=pdf or None,
                                   toc_path=None if generate else toc or None, on_saved=self._editor_saved,
-                                  editor_settings=self.editor_settings, on_settings_changed=self._editor_settings_changed)
+                                  editor_settings=self.editor_settings, on_settings_changed=self._editor_settings_changed,
+                                  draft_dir=settings_path(self.settings_path).parent / "editor_drafts",
+                                  host=self.editor_page, on_closed=self._editor_closed,
+                                  task_guard=self._editor_task_blocked)
+        if self.editor is not None:
+            self.workspace_tabs.select(self.editor_page)
 
     def _editor_settings_changed(self, updates):
         self.editor_settings.update({key: value for key, value in updates.items() if key in self.editor_settings})
@@ -318,6 +372,9 @@ class BookmarkWindow:
                 widget.dnd_bind("<<Drop>>", self._on_drop)
 
     def _on_drop(self, event):
+        if (self.workspace_tabs.select() == str(self.editor_page)
+                and self.editor is not None and not self.editor.closed):
+            return self.editor._on_drop(event)
         if self.busy:
             return REFUSE_DROP
         self._handle_drop_paths(self.root.tk.splitlist(event.data))
@@ -474,6 +531,10 @@ class BookmarkWindow:
     def _preview(self):
         if self.busy:
             return
+        if (self.editor is not None and not getattr(self.editor, "closed", False)
+                and getattr(self.editor, "busy", False)):
+            self.status.set("目录工作台正在处理，请完成后再预览 PDF。")
+            return
         mode = self.mode.get()
         if (mode == "single" and not self.pdf.get().strip()) or (mode == "batch" and not self.folder.get().strip()):
             messagebox.showerror("缺少输入", "请选择 PDF 或文件夹。", parent=self.root)
@@ -590,6 +651,10 @@ class BookmarkWindow:
 
     def _write(self):
         if self.busy:
+            return
+        if (self.editor is not None and not getattr(self.editor, "closed", False)
+                and getattr(self.editor, "busy", False)):
+            self.status.set("目录工作台正在处理，请完成后再写入 PDF。")
             return
         selected = self._checked_items()
         if not selected:
@@ -739,7 +804,8 @@ class BookmarkWindow:
                        "recursive": self.recursive.get(),
                        "existing": "replace" if self.existing.get() == "替换已有书签" else "skip",
                        "last_dir": self.last_dir, "topmost": self.topmost.get(),
-                       "geometry": self.root.geometry().split("+", 1)[0].split("-", 1)[0],
+                       "geometry": (self._main_geometry if self._active_workspace == str(self.editor_page)
+                                    else self.root.geometry()).split("+", 1)[0].split("-", 1)[0],
                        **self.editor_settings}, self.settings_path)
 
     def _show_updates(self):
@@ -763,14 +829,24 @@ class BookmarkWindow:
         return ""
 
     def _close(self):
-        dialog = getattr(self.editor, "window", self.editor)
-        if dialog is not None and dialog.winfo_exists():
-            messagebox.showinfo("目录校对窗口仍打开", "请先保存或关闭目录校对窗口。", parent=dialog)
-            dialog.lift()
-            return
         if self.busy:
             messagebox.showinfo("正在处理", "请等待当前处理结束后再关闭窗口。", parent=self.root)
             return
+        dialog = getattr(self.editor, "window", self.editor)
+        if dialog is not None and dialog.winfo_exists():
+            if getattr(self.editor, "embedded", False):
+                if self.editor.busy:
+                    self.workspace_tabs.select(self.editor_page)
+                    messagebox.showinfo("目录工作台正在处理", "请等待目录任务结束，或取消识别后再关闭程序。", parent=self.root)
+                    return
+                self.editor.close()
+                if not self.editor.closed:
+                    self.workspace_tabs.select(self.editor_page)
+                    return
+            else:
+                messagebox.showinfo("目录校对窗口仍打开", "请先保存或关闭目录校对窗口。", parent=dialog)
+                dialog.lift()
+                return
         try:
             self._save_settings()
         except OSError as error:
@@ -780,6 +856,9 @@ class BookmarkWindow:
             self.updates.close()
         self._render_token += 1
         self.root.after_cancel(self._poll_after)
+        for variable, callback in self._variable_traces:
+            variable.trace_remove("write", callback)
+        self._variable_traces.clear()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 

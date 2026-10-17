@@ -1,6 +1,7 @@
 """Directory choices preserve manual titles, hierarchy and target-page evidence."""
 
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import hashlib
 import json
 from pathlib import Path
@@ -34,7 +35,7 @@ class EditorOptionsTests(unittest.TestCase):
         self.editor.window.geometry("1000x720+32000+32000")
         self.editor.window.attributes("-topmost", False)
         self.errors = []
-        self.dialogs = patch.object(toc_editor.messagebox, "showerror", side_effect=lambda *args, **kw: self.errors.append(args))
+        self.dialogs = patch.object(toc_editor.messagebox, "showerror", side_effect=lambda *args, errors=self.errors, **kw: errors.append(args))
         self.dialogs.start()
         self.root.update()
 
@@ -44,6 +45,8 @@ class EditorOptionsTests(unittest.TestCase):
         self.root.update_idletasks()
         self.root.destroy()
         self.dialogs.stop()
+        # Mock call histories may retain destroyed Tk widgets in reference cycles.
+        gc.collect()
         self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.original)
         self.assertEqual(self.errors, [])
         self.temporary.cleanup()

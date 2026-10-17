@@ -153,8 +153,27 @@ jobs:
           if ($notes -notmatch ('\A# ' + [regex]::Escape($tag) + '(\r?\n|$)')) {
             throw 'Release notes version does not match the release tag'
           }
+          # The release title already displays the version; keep it out of the body.
+          $notes = ([regex]::Replace($notes, ('\A# ' + [regex]::Escape($tag) + '(\r?\n|$)'), '')).TrimStart([char[]]"`r`n")
+          if ([string]::IsNullOrWhiteSpace($notes)) { throw 'Release notes body is empty' }
           $notesPath = Join-Path $env:RUNNER_TEMP release-notes.md
           [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
+          # One-time body-only correction requested with v1.7.0; preserve legacy tags and assets.
+          if ($env:RELEASE_VERSION -eq '1.7.0') {
+            foreach ($legacyTag in @('v1.5.1', 'v1.6.0')) {
+              $legacy = gh release view $legacyTag --json body | ConvertFrom-Json
+              if ($LASTEXITCODE -ne 0) { throw "Cannot read release notes for $legacyTag" }
+              $heading = '\A# ' + [regex]::Escape($legacyTag) + '(\r?\n|$)'
+              if ($legacy.body -match $heading) {
+                $legacyBody = ([regex]::Replace($legacy.body, $heading, '')).TrimStart([char[]]"`r`n")
+                if ([string]::IsNullOrWhiteSpace($legacyBody)) { throw "Release notes body is empty for $legacyTag" }
+                $legacyPath = Join-Path $env:RUNNER_TEMP "release-notes-$legacyTag.md"
+                [System.IO.File]::WriteAllText($legacyPath, $legacyBody, [System.Text.UTF8Encoding]::new($false))
+                gh release edit $legacyTag --notes-file $legacyPath
+                if ($LASTEXITCODE -ne 0) { throw "Cannot update release notes for $legacyTag" }
+              }
+            }
+          }
           $assets = @(Get-ChildItem artifacts -File | ForEach-Object { $_.FullName })
           $arguments = @('release', 'create', $tag, '--draft', '--title', $tag, '--notes-file', $notesPath)
           $arguments += '--verify-tag'

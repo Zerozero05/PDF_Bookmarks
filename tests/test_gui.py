@@ -1,5 +1,6 @@
 """GUI and helper integration checks use temporary PDFs and isolated settings."""
 
+import gc
 import json
 import os
 from pathlib import Path
@@ -170,6 +171,8 @@ class GuiWindowTests(unittest.TestCase):
                 pass
             finally:
                 window.executor.shutdown(wait=True, cancel_futures=True)
+        # Dialog mocks can retain Tk parents in cyclic call history; release on the Tk thread.
+        gc.collect()
 
     def pump(self, condition, root=None, timeout=10):
         root = root or self.root
@@ -263,13 +266,19 @@ class GuiWindowTests(unittest.TestCase):
             opened.assert_called_once_with(self.root, self.window.executor, pdf_path=second,
                                             toc_path=second_toc, on_saved=self.window._editor_saved,
                                             editor_settings=self.window.editor_settings,
-                                            on_settings_changed=self.window._editor_settings_changed)
+                                            on_settings_changed=self.window._editor_settings_changed,
+                                            draft_dir=self.settings_path.parent / "editor_drafts",
+                                            host=self.window.editor_page, on_closed=self.window._editor_closed,
+                                            task_guard=self.window._editor_task_blocked)
             opened.reset_mock()
             self.window._open_editor(True)
             opened.assert_called_once_with(self.root, self.window.executor, pdf_path=second,
                                             toc_path=None, on_saved=self.window._editor_saved,
                                             editor_settings=self.window.editor_settings,
-                                            on_settings_changed=self.window._editor_settings_changed)
+                                            on_settings_changed=self.window._editor_settings_changed,
+                                            draft_dir=self.settings_path.parent / "editor_drafts",
+                                            host=self.window.editor_page, on_closed=self.window._editor_closed,
+                                            task_guard=self.window._editor_task_blocked)
 
     def test_saved_generated_json_retains_batch_and_previews_without_writing(self):
         first, first_toc = self.pdf_pair()

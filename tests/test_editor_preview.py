@@ -1,6 +1,7 @@
 """Read-only directory preview scrolling and zoom use only temporary PDFs."""
 
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import hashlib
 from pathlib import Path
 import tempfile
@@ -29,11 +30,11 @@ class EditorPreviewTests(unittest.TestCase):
         self.root = tk.Tk()
         self.root.withdraw()
         self.callback_errors = []
-        self.root.report_callback_exception = lambda *error: self.callback_errors.append(error)
+        self.root.report_callback_exception = lambda *error, errors=self.callback_errors: errors.append(error)
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.errors = []
         self.error_patch = patch.object(toc_editor.messagebox, "showerror",
-                                       side_effect=lambda *args, **kwargs: self.errors.append(args))
+                                       side_effect=lambda *args, errors=self.errors, **kwargs: errors.append(args))
         self.error_patch.start()
         self.editor = toc_editor.open_editor(self.root, self.executor, self.pdf)
         self.editor.window.attributes("-topmost", False)
@@ -45,6 +46,8 @@ class EditorPreviewTests(unittest.TestCase):
         self.root.update()
         self.root.destroy()
         self.error_patch.stop()
+        # Mock call histories may retain destroyed Tk widgets in reference cycles.
+        gc.collect()
         self.assertEqual(self.callback_errors, [])
         self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.original)
         self.assertEqual(list(self.folder.iterdir()), [self.pdf])

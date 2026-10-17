@@ -1,11 +1,11 @@
 # 版本维护与本地文件管理
 
-正式源代码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，正式 Windows 下载放在 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)。PDF_Bookmarks 可独立处理普通 PDF，也适配 Zotero 附件。当前版本为 v1.6.0，增强双栏目录识别，增加布局/节编号选择与预览滚动/缩放；沿用 v1.5.0 的事务自动更新，历史发行版继续保留。原设置位置、目录 JSON 格式、CLI 参数、PDF 写入与备份默认值继续兼容，新目录选项只用于当前工作台。
+正式源代码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，正式 Windows 下载放在 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)，是否可用以实际附件为准。PDF_Bookmarks 可独立处理普通 PDF，也适配 Zotero 附件。当前源码版本为 v1.7.0，整合同窗标签页，增加本地未完成草稿、撤销/重做、查找筛选与目录树、原目录行定位及逐页识别区域/栏线；保留布局/编号选择、预览滚动/缩放和事务自动更新。原设置位置、目录 JSON、CLI、配置 schema 1、PDF 写入及备份默认值兼容，历史发行版继续保留。
 
 ## 后续升级流程
 
 1. 向 Codex 提供仓库链接，说明修改需求及必须保留的功能。开始前读取当前 `VERSION`、`README.md`、`CHANGELOG.md`、`AGENTS.md` 和相关代码，以仓库最新状态为基础修改。
-2. 在独立分支完成必要修改，增加相应回归验证，更新版本与说明。同步维护 `docs/RELEASE_NOTES.md` 的版本标题、具体更新、兼容性、附件与验证局限；发布流程从完整包中读取这份正文，版本不符则停止。先生成可供本地试用的 Windows EXE；可本地打包，也可下载 GitHub Actions 的构建产物。
+2. 在独立分支完成必要修改，增加相应回归验证，更新版本与说明。同步维护 `docs/RELEASE_NOTES.md` 的版本首行、具体更新、兼容性、附件与验证局限；发布流程从完整包中读取该文件，先核对首行与 `VERSION` 一致，版本不符则停止，再去掉该元数据首行生成公开正文。先生成可供本地试用的 Windows EXE；可本地打包，也可下载 GitHub Actions 的构建产物。
 3. 用户试用、提出调整并确认结果。确认前可以继续修复、测试和准备发布材料，不推送正式版本标签。
 4. 向用户列明具体版本、改动、兼容性、验证结果、发行说明及附件，获得对本次具体发布的明确确认后，合入经过检查的代码，推送与 `VERSION` 一致的 `v版本号` 标签。发布流程再次测试、构建两种 GUI、CLI 和外部 updater，生成 Portable 清单、更新 manifest 与校验文件；真实冻结更新验收通过后创建草稿 Release，上传并核对全部资产后才转为正式发布。按下方命名规则检查标题、文件名和校验清单，不覆盖已有同名 Release。若候选内容变化，重新核对对应确认范围。
 5. 核对 Release 的版本、文件清单、实际下载和校验值后，按当次已有授权处理本地清理。用户已明确要求“发布后清理”或调用 work-clean 时，先保存并读回交接、展示固定绝对路径清单及远端恢复依据，再清理已确认安全的项目，不逐文件重复询问。仅要求发布时默认保留本地文件；清理范围不确定时保留对应内容。
@@ -16,7 +16,7 @@
 
 ## 发布命名与校验清单
 
-仓库名为 `PDF_Bookmarks`。发行版标题只使用版本号，例如 `v1.6.0`，与版本标签一致；项目名和更新内容放正文。文件名采用 `PDF_Bookmarks_<版本>_<系统>_<架构>[_类型].<扩展名>`，各部分使用下划线连接。Windows x64 用 `win_x64`；图形界面单文件版省略类型，其他包使用 `cli`、`portable`、`full` 区分。
+仓库名为 `PDF_Bookmarks`。发行版标题只使用版本号，例如 `v1.7.0`，与版本标签一致；公开正文直接从项目简介、更新内容开始，不再次显示同版本大标题。`docs/RELEASE_NOTES.md` 首行 `# v1.7.0` 保留为版本校验元数据，公开时仅移除该首行及紧随的空行，不删除正文更新与附件信息。文件名采用 `PDF_Bookmarks_<版本>_<系统>_<架构>[_类型].<扩展名>`，各部分使用下划线连接。Windows x64 用 `win_x64`；图形界面单文件版省略类型，其他包使用 `cli`、`portable`、`full` 区分。
 
 | 构建或此前发布文件名 | v1.4.1 发布页文件名 |
 | --- | --- |
@@ -29,7 +29,7 @@
 
 上表记录已保留的 v1.4.1 下载名称。v1.5.0 及后续构建自动采用同一外部命名规则，无需发布后手工改名；内部主入口为 `PDF_Bookmarks.exe`，Portable 根目录为 `PDF_Bookmarks`。旧 Release 内部名称与字节不修改，设置路径仍为 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`。
 
-每个新正式版本至少包含两种 GUI 更新资产及 `update-manifest.json`；本项目另外继续提供 CLI、完整源码 ZIP、`SHA256SUMS.txt` 和 Portable 独立校验文件。例如 v1.5.0 对应 `PDF_Bookmarks_v1.5.0_win_x64.exe` 与 `PDF_Bookmarks_v1.5.0_win_x64_portable.zip`。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
+每个新正式版本保留原七项附件：`PDF_Bookmarks_v1.7.0_win_x64.exe`、`PDF_Bookmarks_v1.7.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.7.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.7.0_win_x64_full.zip`、`PDF_Bookmarks_v1.7.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`；后续版本仅替换其中版本号。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
 
 只重命名 EXE/ZIP 的外部文件名不会改变其字节或 SHA-256。同步更新下载链接、`SHA256SUMS.txt` 与便携 `.zip.sha256` 内容中记录的文件名，保留对应的原校验值；校验文件自身的内容会因此改变。若将来重新打包或修改任何程序包内容，则必须重新计算该文件的校验值，不能沿用本次哈希。上传后按最终文件名下载并检查校验结果。
 
@@ -60,7 +60,9 @@ py -3.12 -m venv .venv
 
 `build_exe.cmd` 会运行测试，调用 `scripts/build_windows.py` 构建独立 updater、Single（`dist\PDF_Bookmarks.exe`）、CLI（`dist\PDF_Bookmarks_CLI.exe`）和 Portable（`dist\portable\PDF_Bookmarks\PDF_Bookmarks.exe` 及完整运行文件夹）。`scripts/package_release.py` 从已加入 Git 管理的源码生成完整包、便携包、manifest 和校验清单；不要把用户配置或已运行生成的 `.pdf_bookmarks` 放进分发包。PDF 写入、备份、缓存、删除 JSON 和更新回滚测试必须使用临时生成的文件，不使用真实 Zotero 附件或用户配置。已有验证见 [VALIDATION.md](../VALIDATION.md)，本次更新验证见 [UPDATE_ACCEPTANCE.md](UPDATE_ACCEPTANCE.md)。
 
-`scripts/build_windows.py --test-version 1.6.1` 仅用于合成新版更新验收，产物隔离在 `dist\test_v1.6.1`，不能进入当前生产版本的正式资产。该参数不修改 `VERSION`。真实冻结验收必须核对改名后的目标 EXE 内容与 BuildInfo、GUI/config/core 健康回执、受管理文件/配置恢复和事务目录清理，不能以“进程启动了”代替。
+`scripts/build_windows.py --test-version 1.7.1` 仅用于合成新版更新验收，产物隔离在 `dist\test_v1.7.1`，不能进入当前生产版本的正式资产。该参数不修改 `VERSION`。真实冻结验收必须核对改名后的目标 EXE 内容与 BuildInfo、GUI/config/core 健康回执、受管理文件/配置恢复和事务目录清理，不能以“进程启动了”代替。
+
+v1.7.0 的编辑恢复文件位于设置文件旁的 `editor_drafts`，与正式目录 JSON 分开，不能把用户未完成草稿当构建缓存清理。草稿自身使用独立格式；不改变正式 JSON `version: 1` 或生产 `CONFIG_SCHEMA=1`。普通切换标签保留状态，关闭工作台才按草稿规则处置；隐藏标签仍算存在编辑器，安装更新前须保存并关闭工作台。
 
 ## GitHub 与本地占用
 

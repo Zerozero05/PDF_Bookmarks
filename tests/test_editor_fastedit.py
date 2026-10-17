@@ -30,7 +30,7 @@ class FastEditorTests(unittest.TestCase):
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.errors = []
         self.error_patch = patch.object(toc_editor.messagebox, "showerror",
-                                       side_effect=lambda title, message, **kw: self.errors.append(message))
+                                       side_effect=lambda title, message, errors=self.errors, **kw: errors.append(message))
         self.error_patch.start()
         self.settings_callback = Mock()
         self.editor = toc_editor.open_editor(self.root, self.executor, self.pdf,

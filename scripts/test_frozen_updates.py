@@ -75,7 +75,7 @@ def app_windows(executable):
         if pid.value in pids:
             title = ctypes.create_unicode_buffer(512)
             user.GetWindowTextW(handle, title, len(title))
-            if "Zotero PDF" in title.value:
+            if "Zotero PDF" in title.value or title.value == "PDF_Bookmarks · PDF 书签目录":
                 windows.append((handle, pid.value))
         return True
 

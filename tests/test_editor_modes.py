@@ -40,7 +40,7 @@ class DirectoryWorkbenchTests(unittest.TestCase):
         self.editor = self.main = None
         self.errors = []
         self.error_patch = patch.object(toc_editor.messagebox, "showerror",
-                                       side_effect=lambda title, message, **kw: self.errors.append(message))
+                                       side_effect=lambda title, message, errors=self.errors, **kw: errors.append(message))
         self.error_patch.start()
 
     def tearDown(self):

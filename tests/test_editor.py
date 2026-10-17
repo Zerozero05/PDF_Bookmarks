@@ -1,6 +1,7 @@
 """Directory editor integration checks use only temporary PDFs and JSON files."""
 
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import hashlib
 import json
 from pathlib import Path
@@ -48,7 +49,7 @@ class EditorIntegrationTests(unittest.TestCase):
         self.root.withdraw()
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.errors = []
-        self.error_patch = patch.object(toc_editor.messagebox, "showerror", side_effect=lambda title, message, **kwargs: self.errors.append(message))
+        self.error_patch = patch.object(toc_editor.messagebox, "showerror", side_effect=lambda title, message, errors=self.errors, **kwargs: errors.append(message))
         self.error_patch.start()
         self.editor = toc_editor.open_editor(self.root, self.executor, self.pdf)
         self.root.update_idletasks()
@@ -59,6 +60,8 @@ class EditorIntegrationTests(unittest.TestCase):
         self.root.update_idletasks()
         self.root.destroy()
         self.error_patch.stop()
+        # Mock call histories may retain destroyed Tk widgets in reference cycles.
+        gc.collect()
         self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.source_sha)
         self.temporary.cleanup()
 
