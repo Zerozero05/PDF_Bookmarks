@@ -39,6 +39,7 @@ class Draft:
     mapping: dict | None
     method: str
     notes: list[str]
+    source_titles: list[str] | None = None
 
 
 @dataclass
@@ -49,6 +50,9 @@ class _Line:
     height: float
     score: float
     numbers: list[tuple[int, float]] = field(default_factory=list)
+    column: int = 0
+    left: float = 0
+    right: float | None = None
 
 
 _PART = re.compile(r"^(?:第\s*[\d一二三四五六七八九十百零〇]+\s*[篇部卷]|part\s+(?:[\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b)", re.I)
@@ -228,8 +232,96 @@ def _engine():
     return _OCR
 
 
-def _group_boxes(boxes):
-    """Join title and a separate right-hand page box on the same baseline."""
+def _group_boxes(boxes, *, column_mode="auto", page_width=None):
+    """Keep independent TOC columns separate before joining baseline boxes."""
+    if not boxes:
+        return []
+    if column_mode == "single":
+        return _baseline_lines(boxes)
+    if column_mode == "double":
+        automatic = _group_boxes(boxes)
+        if len({line.column for line in automatic if line.right is not None}) == 2:
+            return automatic
+        return _forced_columns(boxes, page_width)
+    ordinary = _baseline_lines(boxes)
+    edges = sorted({edge for box in boxes for edge in (box[0], box[2])})
+    extent = edges[-1] - edges[0]
+    heights = sorted(max(box[3] - box[1], 1) for box in boxes)
+    gap = max(heights[len(heights) // 2] * .6, extent * .012)
+    candidates = [(a + b) / 2 for a, b in zip(edges, edges[1:])
+                  if b - a >= gap and edges[0] + extent * .2 < (a + b) / 2 < edges[0] + extent * .8]
+    best = None
+    for boundary in candidates:
+        left = _baseline_lines([box for box in boxes if box[2] <= boundary],
+                               column=0, left=edges[0], right=boundary)
+        right = _baseline_lines([box for box in boxes if box[0] >= boundary],
+                                column=1, left=boundary, right=edges[-1])
+        # A large title-to-page gap is not a column gutter: both sides must
+        # contain independently readable titles with their own terminal pages.
+        def entries(lines):
+            return [line for line in lines if (parsed := _parse([line]))
+                    and _normal(parsed[0][0]) not in {"chapter", "part", "section", "subsection", "sec", "appendix", "附录"}
+                    and not re.fullmatch(r"[A-Za-z](?:\s*[\^_]\s*[A-Za-z0-9]+)?", parsed[0][0])]
+
+        left_entries, right_entries = entries(left), entries(right)
+        if min(len(left_entries), len(right_entries)) < 2:
+            continue
+        if min(len(left_entries) / max(len(left), 1), len(right_entries) / max(len(right), 1)) < .5:
+            continue
+        overlap = min(max(line.y for line in left_entries), max(line.y for line in right_entries)) - max(
+            min(line.y for line in left_entries), min(line.y for line in right_entries))
+        if overlap < heights[len(heights) // 2]:
+            continue
+        spanning = _baseline_lines([box for box in boxes if box[0] < boundary < box[2]], column=-1)
+        first = min(line.y for line in left_entries + right_entries)
+        last = max(line.y for line in left_entries + right_entries)
+        # A spanning header above the columns is fine; an actual entry crossing
+        # the proposed gutter makes this layout ambiguous, so retain one column.
+        if any(first <= line.y <= last and _parse([line]) for line in spanning):
+            continue
+        score = (len(left_entries) + len(right_entries), min(len(left_entries), len(right_entries)))
+        if best is None or score > best[0]:
+            best = (score, [line for line in spanning if line.y < first] + left + right
+                    + [line for line in spanning if line.y >= first])
+    return best[1] if best is not None else ordinary
+
+
+def _forced_columns(boxes, page_width):
+    """Use a geometric gutter for the user's explicit two-column choice."""
+    left_edge = 0 if page_width is not None else min(box[0] for box in boxes)
+    right_edge = page_width if page_width is not None else max(box[2] for box in boxes)
+    middle = (left_edge + right_edge) / 2
+    left = [box for box in boxes if box[2] <= middle]
+    right = [box for box in boxes if box[0] >= middle]
+    body = boxes
+    if left and right:
+        first = max(min(box[1] for box in left), min(box[1] for box in right))
+        last = min(max(box[3] for box in left), max(box[3] for box in right))
+        if first <= last:
+            # Centered headers/footers must not hide an otherwise clear gutter.
+            body = [box for box in boxes if box[3] >= first and box[1] <= last]
+    occupied = []
+    for start, end in sorted((box[0], box[2]) for box in body):
+        if occupied and start <= occupied[-1][1]:
+            occupied[-1][1] = max(occupied[-1][1], end)
+        else:
+            occupied.append([start, end])
+    extent = right_edge - left_edge
+    gutters = [(end + start) / 2 for (_, end), (start, _) in zip(occupied, occupied[1:])
+               if left_edge + extent * .2 < (end + start) / 2 < left_edge + extent * .8]
+    boundary = min(gutters, key=lambda value: abs(value - middle)) if gutters else middle
+    left_lines = _baseline_lines([box for box in boxes if box[2] <= boundary],
+                                 column=0, left=left_edge, right=boundary)
+    right_lines = _baseline_lines([box for box in boxes if box[0] >= boundary],
+                                  column=1, left=boundary, right=right_edge)
+    spanning = _baseline_lines([box for box in boxes if box[0] < boundary < box[2]], column=-1)
+    first = min((line.y for line in left_lines + right_lines), default=float("inf"))
+    return ([line for line in spanning if line.y < first] + left_lines + right_lines
+            + [line for line in spanning if line.y >= first])
+
+
+def _baseline_lines(boxes, *, column=0, left=0, right=None):
+    """Join title fragments and their page only inside one established column."""
     rows = []
     for x0, y0, x1, y1, text, score in sorted(boxes, key=lambda box: ((box[1] + box[3]) / 2, box[0])):
         middle, height = (y0 + y1) / 2, max(y1 - y0, 1)
@@ -239,7 +331,7 @@ def _group_boxes(boxes):
         else:
             match[2].append((x0, text, score))
             match[1] = max(match[1], height)
-    return [_Line(" ".join(part[1] for part in sorted(parts)), min(part[0] for part in parts), middle, height, min(part[2] for part in parts), [(int(match.group(1)), part[0]) for part in parts if (match := _NUM.match(part[1]))]) for middle, height, parts in rows]
+    return [_Line(" ".join(part[1] for part in sorted(parts)), min(part[0] for part in parts), middle, height, min(part[2] for part in parts), [(int(match.group(1)), part[0]) for part in parts if (match := _NUM.match(part[1]))], column, left, right) for middle, height, parts in rows]
 
 
 def _clean(text):
@@ -282,14 +374,97 @@ def _heading_number(text):
     return total
 
 
-def _format_generated_titles(draft):
-    """Format automatic titles after page evidence, leaving imported titles alone."""
-    numeral = r"[\d一二三四五六七八九十百零〇]+"
-    prefix = re.compile(rf"^(?:第\s*{numeral}\s*(?:小节|章|节|篇|部|卷)|"
+_TITLE_NUMERAL = r"[\d一二三四五六七八九十百零〇]+"
+_TITLE_PREFIX = re.compile(rf"^(?:第\s*{_TITLE_NUMERAL}\s*(?:小节|章|节|篇|部|卷)|"
                         rf"(?:chapter|part)\s+(?:[\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b|"
                         rf"(?:section\s+|sec\.\s*)\d+(?:\s*[.．]\s*\d+)*(?![\d.．])|"
                         rf"§?\s*\d+(?:\s*[.．]\s*\d+)+(?![\d.．])|§\s*\d+(?![\d.．])|\d+(?=\s|$)|"
                         rf"[一二三四五六七八九十百]+[、．]|[（(][一二三四五六七八九十百]+[）)])", re.I)
+
+
+def _spaced_generated_title(title):
+    if match := _TITLE_PREFIX.match(title):
+        label = match[0].lstrip("§").strip()
+        if re.match(r"^(?:chapter|part|section)\b|^sec\.", label, re.I):
+            label = re.sub(r"\s+", " ", label)
+        else:
+            label = re.sub(r"\s+", "", label)
+        return (label + " " + title[match.end():].strip()).rstrip()
+    return title
+
+
+def _section_label(title, chapter):
+    """Return a reliable direct-section number and its unnumbered title."""
+    numbered = re.sub(r"^(?:section\s+|sec\.\s*)", "", title, flags=re.I)
+    match = re.match(r"^(\d+(?:[.．]\d+)*)(?:\s+|[.．]\s*|$)(.*)$", numbered)
+    if match:
+        parts = re.split(r"[.．]", match[1])
+        if len(parts) == 1:
+            return int(parts[0]), match[2]
+        if len(parts) == 2 and int(parts[0]) == chapter:
+            return int(parts[1]), match[2]
+        return None, None
+    match = re.match(rf"^(?:第\s*({_TITLE_NUMERAL})\s*节|([一二三四五六七八九十百]+)[、．])\s*(.*)$", title)
+    if match:
+        return _heading_number(match[1] or match[2]), match[3]
+    return None, None
+
+
+def section_titles(draft, style="chapter_section", *, source_titles=None):
+    """Return automatic-draft title choices without changing its other evidence.
+
+    ``section`` uses a chapter-local ``1. Title``; ``preserve`` keeps the
+    recognized labels and only applies the existing spacing/section-sign rule.
+    Sources must follow the current entry order; the editor tracks them by entry
+    identity so moving, deleting or editing an entry cannot reuse another title.
+    Imported/manual drafts have no automatic sources and remain verbatim.
+    """
+    if style not in ("chapter_section", "section", "preserve"):
+        raise BookmarkError("请选择章.节编号、节编号或保持识别编号。")
+    sources = draft.source_titles if source_titles is None else source_titles
+    if sources is None:
+        return [entry.title for entry in draft.entries]
+    if len(sources) != len(draft.entries) or any(not isinstance(title, str) for title in sources):
+        raise BookmarkError("原始标题与当前目录条目不一致，请重新识别后再选择编号方式。")
+    titles = [_spaced_generated_title(title) for title in sources]
+    if style == "preserve":
+        return titles
+    chapter, chapter_level, sequence, reserved = None, 0, 0, set()
+    for index, (entry, title) in enumerate(zip(draft.entries, titles)):
+        chinese = re.match(rf"^第\s*({_TITLE_NUMERAL})\s*章", title)
+        english = _CHAPTER.match(title) if re.match(r"^chapter\b", title, re.I) else None
+        if chinese or english:
+            chapter = _heading_number(chinese[1] if chinese else english[0].split()[1])
+            chapter_level, sequence, reserved = entry.level, 0, set()
+            for following, source in zip(draft.entries[index + 1:], titles[index + 1:]):
+                if following.level <= chapter_level:
+                    break
+                if following.level == chapter_level + 1:
+                    number, _ = _section_label(source, chapter)
+                    if number is not None:
+                        reserved.add(number)
+        elif entry.level <= chapter_level or _PART.match(title) or _ROOT.match(title) or _FRONT.match(title) or _LEVEL_ROOT.match(title):
+            chapter = None
+        elif chapter is not None and entry.level == chapter_level + 1:
+            number, body = _section_label(title, chapter)
+            if number is None:
+                # Ambiguous labels and explicit deeper numbering are retained.
+                if _TITLE_PREFIX.match(title) or _level(title) != 1:
+                    continue
+                number, body = sequence + 1, title
+                while number in reserved:
+                    number += 1
+            sequence = max(sequence, number)
+            label = f"{chapter}.{number}" if style == "chapter_section" else f"{number}."
+            titles[index] = (label + " " + body).rstrip()
+    return titles
+
+
+def _format_generated_titles(draft):
+    """Format automatic titles after page evidence, leaving imported titles alone."""
+    numeral, prefix = _TITLE_NUMERAL, _TITLE_PREFIX
+    if draft.source_titles is None:
+        draft.source_titles = [entry.title for entry in draft.entries]
 
     def section_number(title, chapter):
         numbered = re.sub(r"^(?:section\s+|sec\.\s*)", "", title, flags=re.I)
@@ -300,13 +475,7 @@ def _format_generated_titles(draft):
         return _heading_number(match[1] or match[2]) if match else None
 
     for entry in draft.entries:
-        if match := prefix.match(entry.title):
-            label = match[0].lstrip("§").strip()
-            if re.match(r"^(?:chapter|part|section)\b|^sec\.", label, re.I):
-                label = re.sub(r"\s+", " ", label)
-            else:
-                label = re.sub(r"\s+", "", label)
-            entry.title = (label + " " + entry.title[match.end():].strip()).rstrip()
+        entry.title = _spaced_generated_title(entry.title)
 
     chapter, chapter_level, sequence, reserved = None, 0, 0, set()
     for index, entry in enumerate(draft.entries):
@@ -356,8 +525,8 @@ def _level(title):
 
 def _hierarchy(parts, layout):
     """Use heading roles across pages; indentation is only a reviewable hint."""
-    # Normalize indentation by page width, and compare only siblings on one page
-    # within one chapter: facing-page margins and OCR scale must not add levels.
+    # Compare indentation only within one page/column and chapter; the semantic
+    # chapter context still continues across columns and directory page breaks.
     groups, bases, anchor = [], {}, 0
     for (title, _, _, _), (page, x) in zip(parts, layout):
         if _CHAPTER.match(title) or _FRONT.match(title) or _ROOT.match(title) or _LEVEL_ROOT.match(title):
@@ -403,8 +572,15 @@ def _parse(lines, *, layout=None):
     parsed = []
     pending = ""
     pending_x = None
+    column = None
     for line in lines:
+        if line.column != column:
+            pending, pending_x, column = "", None, line.column
         raw = line.text.strip()
+        heading = _CHAPTER.match(raw)
+        if heading and not raw[heading.end():].strip():
+            pending, pending_x = _clean(raw), line.x
+            continue
         match = _PAGE.match(raw)
         if not match:
             if _CHAPTER.match(raw) or re.match(r"^[§S]?\s*\d+[.．]\d+", raw):
@@ -423,7 +599,7 @@ def _parse(lines, *, layout=None):
         printed = int(page_text) if page_text.isdecimal() and int(page_text) > 0 else None
         parsed.append((title, printed, line.score, page_text))
         if layout is not None:
-            layout.append(x)
+            layout.append((line.column, x, line.left, line.right))
     return parsed
 
 
@@ -439,7 +615,7 @@ def _title_crop(image, line):
 
     height = line.height
     crop = image[max(0, int(line.y - height / 2) - 5):int(line.y + height / 2) + 5,
-                 max(0, int(line.x) - 5):]
+                 max(0, int(line.x) - 5):int(line.right) if line.right is not None else image.shape[1]]
     if not crop.size:
         return None
     _, ink = cv2.threshold(cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY), 0, 255,
@@ -462,19 +638,20 @@ def _title_crop(image, line):
     return crop[:, :end] if end > height else None
 
 
+def _ocr_label(text):
+    match = _CHAPTER.match(text) or re.match(
+        r"^(?:[§S]?\s*\d+(?:\s*[.．]\s*\d+)*|"
+        r"第\s*[\d一二三四五六七八九十百零〇]+\s*(?:小节|节)|"
+        r"(?:section|subsection|sec\.)\s*\d+(?:\s*[.．]\s*\d+)*|"
+        r"[一二三四五六七八九十百]+[、．]|[（(][一二三四五六七八九十百]+[）)])", text, re.I)
+    if match:
+        return re.sub(r"^[§S](?=\s*\d)|\s+", "", match[0]).replace("．", ".").casefold()
+
+
 def _refine_ocr_titles(pix, lines, engine, cancel):
     """Re-read image-backed short titles, retaining the original page numbers."""
     from difflib import SequenceMatcher
     import numpy as np
-
-    def label(text):
-        match = _CHAPTER.match(text) or re.match(
-            r"^(?:[§S]?\s*\d+(?:\s*[.．]\s*\d+)*|"
-            r"第\s*[\d一二三四五六七八九十百零〇]+\s*(?:小节|节)|"
-            r"(?:section|subsection|sec\.)\s*\d+(?:\s*[.．]\s*\d+)*|"
-            r"[一二三四五六七八九十百]+[、．]|[（(][一二三四五六七八九十百]+[）)])", text, re.I)
-        if match:
-            return re.sub(r"^[§S](?=\s*\d)|\s+", "", match[0]).replace("．", ".").casefold()
 
     image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
     candidates = []
@@ -495,30 +672,97 @@ def _refine_ocr_titles(pix, lines, engine, cancel):
     for (line, old_title, page, _), text, score in zip(candidates, result.txts, result.scores):
         title = _clean(text)
         old_key, key = _normal(old_title), _normal(title)
-        old_label = label(old_title)
-        if old_label is not None and label(title) != old_label:
+        old_label = _ocr_label(old_title)
+        if old_label is not None and _ocr_label(title) != old_label:
             continue
         if (title and not _NUM.match(title) and len(key) >= len(old_key)
                 and score >= max(.92, line.score) and SequenceMatcher(None, old_key, key).ratio() >= .7):
             line.text = f"{title} {page}"
 
 
-def _ocr_lines(pix, cancel=None):
+def _same_ocr_entry(original, candidate):
+    """An extra OCR pass must agree with existing text, labels, and page ink."""
+    from difflib import SequenceMatcher
+
+    parsed = _parse([candidate])
+    number = _NUM.match(re.sub(r"[.．·…⋯_]", " ", original.text))
+    if number:
+        return bool(parsed) and parsed[0][1] == int(number[1])
+    label = _ocr_label(original.text)
+    if label is not None and _ocr_label(candidate.text) != label:
+        return False
+    old = _normal(_clean(original.text))
+    new = _normal(parsed[0][0] if parsed else _clean(candidate.text))
+    return bool(old and new) and (SequenceMatcher(None, old, new).ratio() >= .7 or old in new or new in old)
+
+
+def _merge_ocr_lines(original, additional):
+    """Keep complete original rows; add independently detected missing rows."""
+    result = list(original)
+    for line in additional:
+        match = min((old for old in result if abs(old.y - line.y) <= max(old.height, line.height) * .6),
+                    key=lambda old: abs(old.y - line.y), default=None)
+        if match is None:
+            result.append(line)
+        elif (not _parse([match]) and _same_ocr_entry(match, line)
+              and (_parse([line]) or len(_normal(line.text)) > len(_normal(match.text)))):
+            line.score = min(match.score, line.score)
+            result[result.index(match)] = line
+    return sorted(result, key=lambda line: line.y)
+
+
+def _recover_ocr_rows(image, lines, engine, cancel):
+    """Retry incomplete column rows without inventing a page or changing labels."""
+    import cv2
+
+    missing = [line for line in lines if line.right is not None and not _parse([line])]
+    crops = [image[max(0, int(line.y - line.height * .8)):int(line.y + line.height * .8),
+                   max(0, int(line.left) - 5):int(line.right)] for line in missing]
+    if not crops:
+        return
+    _cancelled(cancel)
+    result = engine.recognize_txt(crops)
+    _cancelled(cancel)
+    if result.txts is None or result.scores is None:
+        return
+    for line, crop, text, score in zip(missing, crops, result.txts, result.scores):
+        _cancelled(cancel)
+        candidate = _Line(str(text), line.x, line.y, line.height, float(score),
+                          column=line.column, left=line.left, right=line.right)
+        if not _parse([candidate]) or score < .7 or not _same_ocr_entry(line, candidate):
+            continue
+        # A number-only detection has no title position. Recover its ink start
+        # from this same row, otherwise it would look like a deeply nested item.
+        _, ink = cv2.threshold(cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY), 0, 255,
+                              cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+        _, _, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+        starts = [stat[0] for stat in stats[1:] if stat[3] >= line.height * .25 and stat[4] >= 3]
+        if starts:
+            candidate.x = float(max(0, int(line.left) - 5) + min(starts))
+        candidate.score = min(line.score, candidate.score)
+        lines[lines.index(line)] = candidate
+
+
+def _ocr_lines(pix, cancel=None, *, column_mode="auto"):
     """Compare TOC orientations; long leaders can fool the angle classifier."""
     engine = _engine()
     original_cls = engine.use_cls
     image = pix.tobytes("png")
 
-    def recognize(use_cls):
+    def recognize(use_cls, crop=None, *, start=0, column=0, left=0, right=None):
         _cancelled(cancel)
-        output = engine(image, use_cls=use_cls)
+        output = engine(image if crop is None else crop, use_cls=use_cls)
         if output.boxes is None or output.txts is None:
             return []
-        return _group_boxes([
-            (float(min(box[:, 0])), float(min(box[:, 1])), float(max(box[:, 0])),
+        boxes = [
+            (float(min(box[:, 0])) + start, float(min(box[:, 1])), float(max(box[:, 0])) + start,
              float(max(box[:, 1])), str(text), float(score))
             for box, text, score in zip(output.boxes, output.txts, output.scores)
-        ])
+        ]
+        if crop is None:
+            return (_group_boxes(boxes) if column_mode == "auto" else
+                    _group_boxes(boxes, column_mode=column_mode, page_width=pix.width))
+        return _baseline_lines(boxes, column=column, left=left, right=right)
 
     def quality(lines):
         parsed = _parse(lines)
@@ -527,10 +771,30 @@ def _ocr_lines(pix, cancel=None):
     try:
         lines = recognize(True)
         leaders = sum(bool(re.search(r"[.．·…⋯](?:\s*[.．·…⋯]){3}", line.text)) for line in lines)
-        if _looks_toc(lines, _parse(lines)) or leaders >= 2:
+        if column_mode == "double" or _looks_toc(lines, _parse(lines)) or leaders >= 2:
             upright = recognize(False)
             if quality(upright) > quality(lines):
                 lines = upright
+            bounds = sorted({(line.column, line.left, line.right) for line in lines if line.right is not None})
+            if column_mode == "double" and len(bounds) != 2:
+                bounds = [(0, 0, pix.width / 2), (1, pix.width / 2, pix.width)]
+            if len(bounds) == 2:
+                import numpy as np
+                pixels = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                columns = []
+                for column, left, right in bounds:
+                    start = max(0, int(left) - 5)
+                    crop = pixels[:, start:min(pix.width, int(right) + 5)]
+                    variants = [recognize(use_cls, crop, start=start, column=column, left=left, right=right)
+                                for use_cls in (True, False)]
+                    columns.extend(_merge_ocr_lines([line for line in lines if line.column == column],
+                                                    max(variants, key=quality)))
+                _recover_ocr_rows(pixels, columns, engine, cancel)
+                if columns:
+                    first = min(line.y for line in columns)
+                    spanning = [line for line in lines if line.right is None]
+                    lines = ([line for line in spanning if line.y < first] + columns
+                             + [line for line in spanning if line.y >= first])
             _refine_ocr_titles(pix, lines, engine, cancel)
         return lines
     finally:
@@ -538,8 +802,10 @@ def _ocr_lines(pix, cancel=None):
         engine.use_cls = original_cls
 
 
-def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None):
+def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None, column_mode="auto"):
     """Recognize a reviewable draft without changing the PDF or its caches."""
+    if column_mode not in ("auto", "single", "double"):
+        raise BookmarkError("目录栏数须选择自动、单栏或双栏。")
     path = Path(pdf_path).expanduser().absolute()
     if not path.is_file() or path.suffix.lower() != ".pdf":
         raise BookmarkError("请选择可读取的 PDF 文件。")
@@ -575,14 +841,16 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                 useful = "".join(str(word[4]) for word in words)
                 if len(useful) >= 8 and useful.count("�") < len(useful) * .1:
                     boxes = [(a, b, c, d, str(text), 1.0) for a, b, c, d, text, *_ in words]
-                    lines = _group_boxes(boxes)
+                    lines = (_group_boxes(boxes) if column_mode == "auto" else
+                             _group_boxes(boxes, column_mode=column_mode, page_width=page.rect.width))
                     width, height = page.rect.width, page.rect.height
                     methods.add("文字提取")
                 else:
                     report(f"本地 OCR：PDF 第 {number}/{count} 页……")
                     scale = min(4.0, 1900 / max(page.rect.width, page.rect.height))
                     pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
-                    lines = _ocr_lines(pix, cancel)
+                    lines = (_ocr_lines(pix, cancel) if column_mode == "auto" else
+                             _ocr_lines(pix, cancel, column_mode=column_mode))
                     width, height = pix.width, pix.height
                     methods.add("本地 OCR")
                 _cancelled(cancel)
@@ -611,7 +879,8 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                 break
             toc_pages.append(number)
             parts.extend(parsed)
-            layout.extend((number, x / width) for x in page_layout)
+            layout.extend(((number, column), (x - left) / (right - left) if right is not None else x / width)
+                          for column, x, left, right in page_layout)
         if not parts:
             raise BookmarkError("指定页未识别出标题和页码，请检查目录页范围或使用手工编辑。")
         entries = [DraftEntry(1, "目录", None, first, "高", "目录起始 PDF 页。")]

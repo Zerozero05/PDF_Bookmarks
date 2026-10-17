@@ -13,7 +13,12 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP
 
 from bookmarks_core import BookmarkError
 from gui_support import render_page
-from toc_generation import DraftEntry, apply_mapping, generate_toc, load_draft, save_toc
+from toc_generation import DraftEntry, apply_mapping, generate_toc, load_draft, save_toc, section_titles
+
+
+SECTION_STYLES = {"章.节（1.1 标题）": "chapter_section", "每章节号（1. 标题）": "section",
+                  "保留识别编号": "preserve"}
+COLUMN_MODES = {"自动": "auto", "单栏": "single", "双栏": "double"}
 
 
 def optional_page(value, label):
@@ -85,11 +90,18 @@ class TocEditor:
         self._dirty_fields = False
         self._inline = self._drag = None
         self._photo = None
+        self._preview_scale = 1.0
+        self._zoom_after = None
+        self._preview_center = None
         self._controls = []
         self.pdf = tk.StringVar(value=str(pdf_path or ""))
         self.json = tk.StringVar(value=str(toc_path or ""))
         self.start, self.end, self.offset = (tk.StringVar() for _ in range(3))
         self.prefer_existing = tk.BooleanVar(value=False)
+        self.column_mode = tk.StringVar(value="自动")
+        self.section_style = tk.StringVar(value=next(iter(SECTION_STYLES)))
+        self._section_style_label = self.section_style.get()
+        self._numbering_sources = {}
         self.status = tk.StringVar(value="拖入 PDF 生成目录，或拖入 PDF 和已有 JSON 直接编辑。")
         self.summary = tk.StringVar(value="识别结果须核对并确认后保存；此窗口不修改 PDF。")
         self.level = tk.StringVar(value="1")
@@ -97,6 +109,7 @@ class TocEditor:
         self.confirmed = tk.BooleanVar(value=False)
         self.entry_note = tk.StringVar()
         self.preview_page = tk.StringVar()
+        self.preview_zoom = tk.StringVar(value="100%")
         self.preview_status = tk.StringVar(value="选择目录项，查看右侧目标页并核对。")
         self.save_mode = tk.StringVar(value=self.editor_settings.get("toc_save_mode", "source"))
         self.save_dir = tk.StringVar(value=self.editor_settings.get("toc_save_dir", ""))
@@ -158,7 +171,20 @@ class TocEditor:
         self.cancel_button = ttk.Button(feedback, text="取消操作", command=self.cancel_operation, state="disabled")
         self.cancel_button.pack(side="right")
         ttk.Label(feedback, textvariable=self.status, wraplength=1060).pack(side="left", fill="x", expand=True)
-        ttk.Label(outer, textvariable=self.summary, wraplength=1180).pack(fill="x", pady=(0, 6))
+        summary_row = ttk.Frame(outer)
+        summary_row.pack(fill="x", pady=(0, 6))
+        options = ttk.Frame(summary_row)
+        options.pack(side="right")
+        ttk.Label(options, text="目录布局").pack(side="left")
+        column_mode = ttk.Combobox(options, textvariable=self.column_mode, values=list(COLUMN_MODES), state="readonly", width=7)
+        column_mode.pack(side="left", padx=(5, 14))
+        self._controls.append(column_mode)
+        ttk.Label(options, text="节编号").pack(side="left")
+        section_style = ttk.Combobox(options, textvariable=self.section_style, values=list(SECTION_STYLES), state="readonly", width=22)
+        section_style.pack(side="left", padx=5)
+        section_style.bind("<<ComboboxSelected>>", self._section_style_changed)
+        self._controls.append(section_style)
+        ttk.Label(summary_row, textvariable=self.summary, wraplength=470).pack(side="left", fill="x", expand=True)
 
         body = ttk.Panedwindow(outer, orient="horizontal")
         body.pack(fill="both", expand=True)
@@ -230,6 +256,13 @@ class TocEditor:
         self._controls.append(page_entry)
         self._button(preview_controls, "查看", self.show_page).pack(side="left")
         self._button(preview_controls, "目录页", self.show_toc_page).pack(side="left", padx=4)
+        zoom_controls = ttk.Frame(right)
+        zoom_controls.pack(fill="x", pady=(0, 5))
+        self._button(zoom_controls, "缩小", lambda: self.zoom_preview(1 / 1.2), width=6).pack(side="left")
+        self._button(zoom_controls, "放大", lambda: self.zoom_preview(1.2), width=6).pack(side="left", padx=4)
+        self._button(zoom_controls, "100%", self.reset_preview_zoom, width=6).pack(side="left")
+        ttk.Label(zoom_controls, textvariable=self.preview_zoom, width=5).pack(side="left", padx=6)
+        ttk.Label(zoom_controls, text="滚轮滚动；Ctrl＋滚轮缩放").pack(side="left")
         ttk.Label(right, textvariable=self.preview_status, wraplength=440).pack(fill="x", pady=(0, 5))
         canvas_frame = ttk.Frame(right)
         canvas_frame.pack(fill="both", expand=True)
@@ -242,6 +275,8 @@ class TocEditor:
         scroll_x = ttk.Scrollbar(canvas_frame, orient="horizontal", command=self.canvas.xview)
         scroll_x.grid(row=1, column=0, sticky="ew")
         self.canvas.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.canvas.bind(sequence, self._preview_wheel)
 
         mapping_tabs = ttk.Notebook(outer)
         mapping_tabs.pack(fill="x", pady=8)
@@ -317,9 +352,12 @@ class TocEditor:
         self._editing_index = None
         self.pdf.set(str(value))
         self.draft = self._loaded_json = None
+        self._numbering_sources.clear()
         self.tree.delete(*self.tree.get_children())
         self.canvas.delete("all")
         self._photo = None
+        self._cancel_zoom()
+        self._preview_center = None
         self._render_token += 1
         self._clear_fields()
         self.summary.set("核对目录后保存 JSON；此窗口不修改 PDF。")
@@ -415,7 +453,7 @@ class TocEditor:
     def _set_busy(self, value):
         self.busy = value
         for control in self._controls:
-            control.configure(state="disabled" if value else "normal")
+            control.configure(state="disabled" if value else "readonly" if isinstance(control, ttk.Combobox) else "normal")
         self.tree.configure(selectmode="none" if value else "extended")
         self.segments.configure(state="disabled" if value else "normal")
         self.cancel_button.configure(state="normal" if value else "disabled")
@@ -469,8 +507,10 @@ class TocEditor:
             self.events.put(("progress", token, str(message)))
 
         self._pending_json = None
+        layout = COLUMN_MODES[self.column_mode.get()]
+        layout_options = {"column_mode": layout} if layout != "auto" else {}
         self._run("draft", lambda: generate_toc(pdf, toc_start=start, toc_end=end,
-                                                prefer_existing=prefer, progress=progress, cancel=self.cancel))
+                                                prefer_existing=prefer, progress=progress, cancel=self.cancel, **layout_options))
 
     def import_json(self):
         if self.busy or self.closed:
@@ -505,6 +545,10 @@ class TocEditor:
                         self.canvas.delete("all")
                         self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
                         self.canvas.configure(scrollregion=(0, 0, self._photo.width(), self._photo.height()))
+                        center = self._preview_center
+                        self.canvas.xview_moveto(center[0] - self.canvas.winfo_width() / (2 * self._photo.width()) if center else 0)
+                        self.canvas.yview_moveto(center[1] - self.canvas.winfo_height() / (2 * self._photo.height()) if center else 0)
+                        self._preview_center = None
                     continue
                 if action == "render_error":
                     if token == self._render_token:
@@ -526,6 +570,11 @@ class TocEditor:
                     else:
                         self.draft = value
                         self._loaded_json = self._pending_json
+                        sources = self.draft.source_titles
+                        self._numbering_sources = ({id(entry): [entry, source, entry.title, entry.level]
+                                                   for entry, source in zip(self.draft.entries, sources)}
+                                                  if sources is not None else {})
+                        self._change_section_titles()
                         self._load_mapping()
                         self._refresh()
                         self._update_save_location()
@@ -548,6 +597,45 @@ class TocEditor:
         self.segments.delete("1.0", "end")
         self.segments.insert("1.0", "\n".join(f"{item['printed_start']},{item['printed_end']},{item['pdf_start']}"
                                                for item in mapping.get("segments", [])))
+
+    def _change_section_titles(self):
+        if not self.draft or not self._numbering_sources:
+            return 0
+        sources, automatic = [], []
+        for entry in self.draft.entries:
+            record = self._numbering_sources.get(id(entry))
+            eligible = bool(record and entry.title == record[2] and entry.level == record[3])
+            automatic.append(eligible)
+            sources.append(record[1] if eligible else entry.title)
+        titles = section_titles(self.draft, SECTION_STYLES[self.section_style.get()], source_titles=sources)
+        changed = 0
+        for entry, title, eligible in zip(self.draft.entries, titles, automatic):
+            if not eligible:
+                continue
+            self._numbering_sources[id(entry)][2] = title
+            if title != entry.title:
+                entry.title = title
+                entry.confirmed = False
+                note = " 已调整节编号，请重新核对。"
+                if note not in entry.note:
+                    entry.note += note
+                changed += 1
+        return changed
+
+    def _section_style_changed(self, _event=None):
+        if self.closed or self.busy:
+            return
+        if not self._apply_auto(report=False):
+            self.section_style.set(self._section_style_label)
+            return
+        self._section_style_label = self.section_style.get()
+        changed = self._change_section_titles()
+        if changed:
+            selection = [int(index) for index in self.tree.selection()]
+            self._refresh(selection)
+            self.status.set(f"已调整 {changed} 项节编号；请核对标题并重新确认。")
+        else:
+            self.status.set("已选择节编号方式；新识别目录按此方式生成，导入与手工标题保持原样。")
 
     def _refresh(self, selected=None):
         self._cancel_edit_timer()
@@ -649,6 +737,8 @@ class TocEditor:
             levels[index] = level
             self._validate_levels(levels)
         changed = (entry.level, entry.title, entry.printed_page, entry.pdf_page) != (level, title, printed, pdf)
+        if (entry.level, entry.title) != (level, title):
+            self._numbering_sources.pop(id(entry), None)
         entry.level, entry.title, entry.printed_page, entry.pdf_page = level, title, printed, pdf
         entry.confirmed = self.confirmed.get()
         if changed:
@@ -680,7 +770,7 @@ class TocEditor:
 
     def _update_summary(self):
         confirmed = sum(bool(entry.confirmed) for entry in self.draft.entries)
-        self.summary.set(f"共 {len(self.draft.entries)} 项，已确认 {confirmed} 项；PDF 共 {self.draft.page_count} 页。修改自动应用，核对后保存 JSON。")
+        self.summary.set(f"共 {len(self.draft.entries)} 项，已确认 {confirmed} 项；PDF 共 {self.draft.page_count} 页。修改自动应用。")
 
     def _apply_auto(self, report=False):
         if self.closed or self.busy or self._editing_index is None:
@@ -736,6 +826,7 @@ class TocEditor:
             for index in indices:
                 entry = self.draft.entries[index]
                 if entry.level != levels[index]:
+                    self._numbering_sources.pop(id(entry), None)
                     entry.level = levels[index]
                     entry.confirmed = False
                     entry.confidence = "手工校正"
@@ -906,9 +997,48 @@ class TocEditor:
             return
         self.show_page()
 
-    def show_page(self):
+    def _cancel_zoom(self):
+        if self._zoom_after is not None:
+            self.window.after_cancel(self._zoom_after)
+            self._zoom_after = None
+
+    def _preview_wheel(self, event):
+        if self.closed or self.busy:
+            return "break"
+        delta = (120 if event.num == 4 else -120) if getattr(event, "num", None) in (4, 5) else event.delta
+        if not delta:
+            return "break"
+        if event.state & 0x0004:
+            self.zoom_preview(1.2 ** max(-3, min(3, delta / 120)))
+        else:
+            units = -int(delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+            self.canvas.yview_scroll(units * 3, "units")
+        return "break"
+
+    def zoom_preview(self, factor):
+        if self.closed or self.busy or not self.pdf.get().strip() or not self.preview_page.get().strip():
+            return
+        scale = round(max(0.5, min(3.0, self._preview_scale * factor)), 6)
+        if scale == self._preview_scale:
+            return
+        if self._photo is not None and self._preview_center is None:
+            self._preview_center = (self.canvas.canvasx(self.canvas.winfo_width() / 2) / self._photo.width(),
+                                    self.canvas.canvasy(self.canvas.winfo_height() / 2) / self._photo.height())
+        self._preview_scale = scale
+        self.preview_zoom.set(f"{scale:.0%}")
+        self._render_token += 1
+        self._cancel_zoom()
+        self._zoom_after = self.window.after(120, lambda: self.show_page(keep_view=True))
+
+    def reset_preview_zoom(self):
+        self.zoom_preview(1 / self._preview_scale)
+
+    def show_page(self, *, keep_view=False):
         if self.busy or self.closed:
             return
+        self._cancel_zoom()
+        if not keep_view:
+            self._preview_center = None
         try:
             pdf = self._pdf_path()
             page = optional_page(self.preview_page.get(), "查看页码")
@@ -923,12 +1053,14 @@ class TocEditor:
         token = self._render_token
         self.preview_status.set(f"PDF 第 {page} 页（只读预览）")
         self.canvas.delete("all")
+        scale = self._preview_scale
 
         def work():
             if self.closed or token != self._render_token:
                 return
             try:
-                png = render_page(pdf, page, max_width=650, max_height=850)
+                png = render_page(pdf, page, max_width=round(650 * scale), max_height=round(850 * scale),
+                                  max_scale=2.0 * scale)
                 self.events.put(("render", token, png))
             except Exception as error:
                 self.events.put(("render_error", token, str(error)))
@@ -1037,6 +1169,7 @@ class TocEditor:
         self._persist_settings()
         self.cancel.set()
         self._render_token += 1
+        self._cancel_zoom()
         if hasattr(self, "_poll_after"):
             self.window.after_cancel(self._poll_after)
         self._cancel_edit_timer()

@@ -144,12 +144,14 @@ def dropped_pairs(paths) -> list[tuple[Path, Path | None]]:
     return result
 
 
-def render_page(pdf_path, pdf_page: int, max_width: int = 800, max_height: int = 1000) -> bytes:
+def render_page(pdf_path, pdf_page: int, max_width: int = 800, max_height: int = 1000, *, max_scale: float = 2.0) -> bytes:
     """Return a PNG preview; no document write, OCR or persistent image cache."""
     if type(pdf_page) is not int or pdf_page < 1:
         raise ValueError("PDF 实际页码必须是从 1 开始的整数。")
     if any(type(size) is not int or not 1 <= size <= 8192 for size in (max_width, max_height)):
         raise ValueError("预览尺寸必须是 1–8192 的整数。")
+    if not 0 < max_scale <= 6:
+        raise ValueError("预览比例须大于 0 且不超过 6。")
     with pymupdf.open(str(pdf_path)) as document:
         if not document.is_pdf or document.needs_pass:
             raise ValueError("无法预览此 PDF。")
@@ -158,6 +160,6 @@ def render_page(pdf_path, pdf_page: int, max_width: int = 800, max_height: int =
         page = document.load_page(pdf_page - 1)
         if page.rect.width <= 0 or page.rect.height <= 0:
             raise ValueError("PDF 页面尺寸无效。")
-        scale = min(2.0, (max_width - 0.5) / page.rect.width, (max_height - 0.5) / page.rect.height)
+        scale = min(max_scale, (max_width - 0.5) / page.rect.width, (max_height - 0.5) / page.rect.height)
         pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
         return pixmap.tobytes("png")
