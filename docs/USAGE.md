@@ -1,8 +1,8 @@
 # PDF_Bookmarks 完整使用说明
 
-本页说明 PDF_Bookmarks 的使用方式及单文件、便携文件夹两种打包形式。当前源码版本为 [v1.7.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.7.0)，增加同窗标签页、本地草稿恢复、撤销/重做、查找筛选与目录树，以及识别区域、栏线和来源定位；下载是否可用以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases) 的实际附件为准。[v1.6.0 历史版本](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.6.0)保留，既有 PDF/目录功能、单/双栏与节编号选项、默认设置继续兼容。源码命令均在仓库根目录执行。项目首页见 [README.md](../README.md)，维护流程见 [MAINTENANCE.md](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks 的使用方式及单文件、便携文件夹两种打包形式。当前源码版本为 [v1.8.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.8.0)，修复标签页窗口跳动，改善拖宽排版，增加夜间模式、Enter多选确认及查找；原有同窗标签页、草稿恢复、撤销/重做、筛选/目录树、识别区域/栏线和来源定位继续保留；下载是否可用以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases) 的实际附件为准。[v1.7.0 历史版本](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.7.0)保留，既有 PDF/目录功能、单/双栏与节编号选项、默认设置继续兼容。源码命令均在仓库根目录执行。项目首页见 [README.md](../README.md)，维护流程见 [MAINTENANCE.md](MAINTENANCE.md)。
 
-当前 Windows 版：**v1.7.0**，以发行页实际附件为准。v1.4.1 增加的“写入成功后删除目录 JSON”仍为可选项，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级和 JSON 保存目录保留；目录工作台现位于主窗口的独立标签页，原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能继续可用。
+当前 Windows 版：**v1.8.0**，以发行页实际附件为准。v1.4.1 增加的“写入成功后删除目录 JSON”仍为可选项，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级和 JSON 保存目录保留；目录工作台现位于主窗口的独立标签页，原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能继续可用。
 
 v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处理列表、预览后的书签树、目标页图片和处理记录现在能够正常显示和点击。关闭旧程序后换用新版 EXE 即可，原有设置自动保留；PDF 写入、备份、缓存清理和命令行逻辑没有改动。
 
@@ -16,11 +16,11 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 | 下载文件 | 打开方式 |
 | --- | --- |
-| [PDF_Bookmarks_v1.7.0_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.7.0/PDF_Bookmarks_v1.7.0_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
-| [PDF_Bookmarks_v1.7.0_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.7.0/PDF_Bookmarks_v1.7.0_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe` |
-| [PDF_Bookmarks_v1.7.0_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.7.0/PDF_Bookmarks_v1.7.0_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [PDF_Bookmarks_v1.8.0_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.0/PDF_Bookmarks_v1.8.0_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
+| [PDF_Bookmarks_v1.8.0_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.0/PDF_Bookmarks_v1.8.0_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe` |
+| [PDF_Bookmarks_v1.8.0_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.0/PDF_Bookmarks_v1.8.0_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
-便携版须让 EXE、`_internal`、`package-manifest.json` 与其余文件保留在同一文件夹内；移动时移动整个 `PDF_Bookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。下载文件使用 `SHA256SUMS.txt` 校验；便携 ZIP 另附 `PDF_Bookmarks_v1.7.0_win_x64_portable.zip.sha256`。`update-manifest.json` 供程序检查更新使用。原设置路径保持不变；历史 v1.4.1 的 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。
+便携版须让 EXE、`_internal`、`package-manifest.json` 与其余文件保留在同一文件夹内；移动时移动整个 `PDF_Bookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。下载文件使用 `SHA256SUMS.txt` 校验；便携 ZIP 另附 `PDF_Bookmarks_v1.8.0_win_x64_portable.zip.sha256`。`update-manifest.json` 供程序检查更新使用。原设置路径保持不变；历史 v1.4.1 的 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。
 
 1. 从发布页下载所选程序，按上表打开。程序面向 Windows 10/11 x64。
 2. 找到需要添加或更新书签的 PDF，关闭这本 PDF 的阅读窗口。
@@ -125,7 +125,7 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 
 ## v1.7.0：校对与界面完善
 
-以下功能自 v1.7.0 提供，v1.6.0 历史附件不含这些改动；可下载状态以发行页实际附件为准。主窗口标题为 `PDF_Bookmarks · PDF 书签目录`；普通 PDF 独立可用，Zotero 仍是适配场景。发行标题与文件继续沿用原命名规范。
+标签页、草稿和下述基础校对功能自v1.7.0提供；稳定窗口、夜间模式与Enter批量确认自v1.8.0提供。v1.6.0历史附件不含v1.7.0及以后的新增功能；可下载状态以发行页实际附件为准。主窗口标题为 `PDF_Bookmarks · PDF 书签目录`；普通 PDF 独立可用，Zotero 仍是适配场景。发行标题与文件继续沿用原命名规范。
 
 ### 同一窗口的主界面与目录工作台
 
@@ -137,11 +137,19 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 
 点击整个窗口的关闭按钮时，正在进行的主界面处理或目录任务须先结束；可取消识别后再关闭。程序随后按原有草稿保存与取消规则关闭工作台，取消提示会保留整个程序。切回主界面只是隐藏工作台；安装更新前仍须保存并关闭工作台内容，标签隐藏不代表未完成的编辑已安全结束。
 
-两页分别沿用原来的窗口大小与“置顶”设置，切换时应用当前页的设置；设置路径和格式不变。为容纳标签条，主界面最小900×650，工作台最小1000×760。源码接口直接调用 `open_editor()` 时默认仍可打开独立工作台窗口。
+正式v1.7.0原实现分别沿用两页窗口大小与“置顶”设置，主界面最小900×650，工作台最小1000×760。v1.8.0修复切页时的大小及位置跳动：两个标签页共用当前窗口大小、位置与最大化状态，切换时不再恢复各页旧尺寸；在任一页手动调整后，另一页沿用调整结果。共用窗口的最小尺寸1000×760只在启动时设置一次，关闭重开工作台、保存返回主界面也保持当前窗口。两页“置顶”偏好、设置路径与格式不变；旧 `editor_geometry` 保留给源码接口 `open_editor()` 的独立工作台兼容入口。
+
+### v1.8.0：界面、夜间模式与拖宽改善
+
+两个页面右上方均有“夜间模式”。勾选后立即切换深色界面，取消回到浅色；选择保存到原设置文件，重启后沿用。编辑内容、撤销历史、预览图片和识别结果不因切换外观而重新生成。PDF预览的页面像素保持原样，原本白色的纸张仍为白色；文件选择及系统提示框由Windows显示。
+
+主界面把写入选项集中分组，工作台把查找和筛选分行；预览及保存使用突出按钮，辅助说明降低视觉干扰。所有原按钮和选项继续保留。拖动窗口时暂缓整页反复排版，停止变化约80毫秒后按最终尺寸重排，完整排版仍需要额外时间；不会重新OCR或修改PDF。
+
+本次界面与排版沿用标准Tk/ttk和现有项目接口，没有复制新的第三方代码或新增依赖。浅色/深色实测和支持边界见[验证记录](../VALIDATION.md)。这些改动自v1.8.0提供，历史v1.7.0附件保持原内容。设计来源与采用范围见[界面设计说明](UI_DESIGN.md)。
 
 两页共用原来的 PDF 处理队列：主界面处理期间，工作台的识别、载入和保存会提示等待；工作台任务运行期间，主界面的预览和写入也会等待，避免两页同时改变待处理内容。
 
-标签页整合复用项目已有的 `ttk.Notebook`；本版另含下述逐页区域/栏线识别增强，没有新增外部借鉴或第三方依赖。原 PDF/JSON 格式、CLI、原地安全写入、人工确认和更新事务约定继续沿用；实际验证范围见 [验证记录](../VALIDATION.md)。
+v1.7.0的标签页整合及下述逐页区域/栏线识别增强复用项目已有的 `ttk.Notebook` 和PyMuPDF，没有为这些功能新增外部借鉴或第三方依赖；v1.8.0的外观方法参考单独记在界面设计说明中。原 PDF/JSON 格式、CLI、原地安全写入、人工确认和更新事务约定继续沿用；实际验证范围见 [验证记录](../VALIDATION.md)。
 
 ### 未完成草稿、恢复与撤销
 
@@ -158,6 +166,8 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 ### 搜索、筛选与目录树
 
 在目录表上方输入标题文字，按 Enter 或点“查找”；可同时选择“全部”“待确认”“低可信”“未知页码”。“下一待核对”在当前筛选范围内跳到下一未确认项，到末尾后从头继续。筛选前会提交有效编辑；输入尚未完成或无效时保留表单，不切走当前条目。
+
+**v1.8.0快捷操作**：在目录列表中核对所选条目的标题、层级和目标页后，按 Enter（含数字键盘 Enter）即可确认；Ctrl / Shift 多选后可一次确认多项。随后从最后所选项之后跳到当前搜索/筛选范围内的下一待核对项，末尾循环；没有待核对项时提示完成，可清空查找并切换“全部”继续。所选项存在未知或越界目标页、空标题时整批不确认，请先校正。批量确认可一次撤销，也会按原设置暂存草稿，不会自动导出或写入 PDF。搜索框的主键盘和数字键盘 Enter 均执行“查找”；下方编辑框及行内编辑的 Enter 仍只提交编辑。
 
 “详细表格”继续作为默认显示方式；“目录树”按真实父子关系展开。搜索、筛选和切换显示保留每行与原条目的对应，不重排目录，不重编号，也不更改页码或确认状态。找不到下一项时可清空查找文字并切回“全部”。
 
@@ -244,7 +254,7 @@ Windows EXE 包含中文/英文 OCR 模型和 CPU 运行库，识别不上传 PD
 
 ## 命令行
 
-源码入口：`launch_cli.cmd`；本地构建或完整包中的可执行入口：`dist\PDF_Bookmarks_CLI.exe`；发布页单独下载的 CLI 文件名为 `PDF_Bookmarks_v1.7.0_win_x64_cli.exe`。下面的命令在项目文件夹中运行，也可把 `launch_cli.cmd` 替换为所用 CLI 的实际路径。
+源码入口：`launch_cli.cmd`；本地构建或完整包中的可执行入口：`dist\PDF_Bookmarks_CLI.exe`；发布页单独下载的 CLI 文件名为 `PDF_Bookmarks_v1.8.0_win_x64_cli.exe`。下面的命令在项目文件夹中运行，也可把 `launch_cli.cmd` 替换为所用 CLI 的实际路径。
 
 ```powershell
 # 预览同名目录文件
@@ -370,7 +380,7 @@ _backup\书名.20261003-143015-123456.a1b2c3d4.pdf
 
 程序更新不会重置设置。两种 GUI 仍共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`；新版默认补齐新增设置、保留未知字段，配置需要迁移时先备份并验证。新版初始化失败将恢复旧程序与旧配置；成功后删除旧程序备份和更新临时文件，仍被运行中的 helper 占用的内容由后台重试或下次启动继续清理。
 
-**从 v1.4.1 升级时须先手动下载 v1.7.0**，旧版没有更新入口。v1.5.0 及后续 GUI 可通过“帮助 / 更新”检查已经公开的正式版本。先关闭旧程序，再运行新 Single EXE 或完整解压的新 Portable 文件夹，原设置自动沿用。源码运行及 CLI 使用发行版页面手动下载；程序不会覆盖 Python 解释器或把 CLI 替换为 GUI。未点击安装而直接退出时，已准备的更新会被取消；“退出时安装”和“跳过此版本”列入后续阶段。
+**从 v1.4.1 升级时须先手动下载 v1.8.0**，旧版没有更新入口。v1.5.0 及后续 GUI 可通过“帮助 / 更新”检查已经公开的正式版本。先关闭旧程序，再运行新 Single EXE 或完整解压的新 Portable 文件夹，原设置自动沿用。源码运行及 CLI 使用发行版页面手动下载；程序不会覆盖 Python 解释器或把 CLI 替换为 GUI。未点击安装而直接退出时，已准备的更新会被取消；“退出时安装”和“跳过此版本”列入后续阶段。
 
 权限不足时先关闭程序并移动到可写目录重试，或明确选择以管理员权限运行；不在替换一半后请求提权。更新失败诊断保存在本程序临时更新目录的 `diagnostics`，机制与恢复说明见 [AUTO_UPDATE.md](AUTO_UPDATE.md)，验证边界见 [UPDATE_ACCEPTANCE.md](UPDATE_ACCEPTANCE.md)。
 

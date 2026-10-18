@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import asdict
+import gc
 import hashlib
 import json
 import os
@@ -63,9 +64,17 @@ class EditorWorkflowTests(unittest.TestCase):
         finally:
             for dialog in reversed(self.dialogs):
                 dialog.stop()
-        self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.pdf_hash)
-        self.assertEqual(self.toc.read_bytes(), self.toc_bytes)
-        self.temporary.cleanup()
+            self.dialogs.clear()
+            self.editor = self.root = self.executor = None
+            self.editors.clear()
+            editor = None
+        try:
+            self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.pdf_hash)
+            self.assertEqual(self.toc.read_bytes(), self.toc_bytes)
+        finally:
+            self.temporary.cleanup()
+            # Release mock call histories with Tk parents on the Tk thread.
+            gc.collect()
 
     def open(self):
         editor = toc_editor.open_editor(self.root, self.executor, self.pdf, draft_dir=self.drafts)
@@ -277,6 +286,175 @@ class EditorWorkflowTests(unittest.TestCase):
             self.editor.next_pending()
             self.assertEqual(self.editor._editing_index, expected)
         self.assertEqual(self.snapshot(), before)
+
+    def press_enter(self, widget, key="Return"):
+        self.root.update()
+        widget.focus_force()
+        self.root.update()
+        if key == "KP_Enter" and self.root.tk.call("tk", "windowingsystem") == "win32":
+            # Windows Tk cannot synthesize a separate KP_Enter keycode. Dispatch
+            # its registered Tcl callback; normal Return uses a real Tk event.
+            binding = widget.bind("<KP_Enter>")
+            self.assertTrue(binding, "数字键盘 Enter 尚未绑定")
+            widget.tk.call(binding.split("[", 1)[1].split(" ", 1)[0])
+        else:
+            widget.event_generate(f"<{key}>")
+        self.root.update()
+
+    def test_enter_confirms_selected_row_and_previews_next_pending(self):
+        self.load()
+        self.choose(4)
+        self.press_enter(self.editor.tree)
+        self.assertTrue(self.editor.draft.entries[4].confirmed)
+        self.assertEqual(self.editor.tree.item("4", "values")[-1], "已确认")
+        self.assertEqual(self.editor.tree.selection(), ("1",))
+        self.assertEqual(self.editor._editing_index, 1)
+        self.assertEqual(self.editor.preview_page.get(), "3")
+        self.assertFalse(self.editor.confirmed.get())
+        self.assertIn("已确认 3", self.editor.summary.get())
+        self.assertFalse(self.errors)
+
+    def test_keypad_enter_confirms_multiple_rows_as_one_undoable_draft_change(self):
+        self.load()
+        self.choose(1)
+        self.editor.tree.selection_set("1", "4")
+        before = self.snapshot()
+        self.press_enter(self.editor.tree, "KP_Enter")
+        after = self.snapshot()
+        self.assertEqual([item.confirmed for item in self.editor.draft.entries], [True, True, False, True, True])
+        self.assertEqual(self.editor.tree.selection(), ("2",))
+        for old, new in zip(before["entries"], after["entries"]):
+            self.assertEqual({k: v for k, v in old.items() if k != "confirmed"},
+                             {k: v for k, v in new.items() if k != "confirmed"})
+        self.editor.undo()
+        self.assertEqual(self.snapshot(), before)
+        self.editor.redo()
+        self.assertEqual(self.snapshot(), after)
+        self.assertTrue(self.editor.save_draft())
+        state = self.editor.store.load(self.pdf)
+        self.assertEqual(state["draft"]["entries"], after["entries"])
+        self.assertEqual(self.toc.read_bytes(), self.toc_bytes)
+
+    def test_enter_rejects_whole_selection_with_unknown_or_out_of_range_target(self):
+        self.load()
+        self.choose(1)
+        self.editor.tree.selection_set("1", "2")
+        before = self.snapshot()
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.editor.tree.selection(), ("1", "2"))
+        self.assertTrue(self.errors)
+        self.assertIn("目标页", self.errors[-1])
+        self.editor.draft.entries[2].pdf_page = 9
+        before = self.snapshot()
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.editor.tree.selection(), ("1", "2"))
+
+    def test_enter_rejects_empty_title_in_nonfocused_selected_row(self):
+        self.load()
+        self.choose(1)
+        self.editor.draft.entries[4].title = " "
+        self.editor.tree.selection_set("1", "4")
+        before = self.snapshot()
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+        self.assertTrue(self.errors)
+
+    def test_enter_pending_filter_selects_first_remaining_without_skipping(self):
+        self.load()
+        self.editor.filter_mode.set("待确认")
+        self.editor._filter_changed()
+        self.choose(1)
+        self.press_enter(self.editor.tree)
+        self.assertTrue(self.editor.draft.entries[1].confirmed)
+        self.assertEqual(self.editor.tree.get_children(), ("2", "4"))
+        self.assertEqual(self.editor.tree.selection(), ("2",))
+        self.assertEqual(self.editor._editing_index, 2)
+
+    def test_enter_tree_search_uses_original_indices_and_skips_context_parents(self):
+        self.load()
+        self.editor.view_mode.set("目录树")
+        self.editor.search_text.set("1.1")
+        self.editor._filter_changed()
+        self.choose(1)
+        self.press_enter(self.editor.tree)
+        self.assertTrue(self.editor.draft.entries[1].confirmed)
+        self.assertEqual(self.editor.tree.selection(), ("2",))
+        self.assertEqual(self.editor.tree.parent("2"), "1")
+        self.assertFalse(self.editor.draft.entries[4].confirmed)
+
+    def test_enter_completion_keeps_selection_and_does_not_export(self):
+        self.load()
+        self.editor.draft.entries[2].pdf_page = 4
+        for entry in self.editor.draft.entries:
+            entry.confirmed = True
+        self.editor.draft.entries[4].confirmed = False
+        self.editor._refresh(4)
+        self.press_enter(self.editor.tree)
+        self.assertTrue(all(entry.confirmed for entry in self.editor.draft.entries))
+        self.assertEqual(self.editor.tree.selection(), ("4",))
+        self.assertTrue(self.editor.confirmed.get())
+        self.assertIn("没有待核对项", self.editor.status.get())
+        self.assertEqual(self.toc.read_bytes(), self.toc_bytes)
+        self.editor.filter_mode.set("待确认")
+        self.editor._filter_changed()
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.editor.tree.selection(), ())
+        self.assertFalse(self.errors)
+
+    def test_enter_busy_or_no_selection_does_not_confirm(self):
+        self.load()
+        self.choose(1)
+        before = self.snapshot()
+        self.editor._set_busy(True)
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+        self.editor._set_busy(False)
+        self.editor.tree.selection_remove(*self.editor.tree.selection())
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_search_enter_and_keypad_enter_filter_without_confirming(self):
+        self.load()
+        search = next(widget for widget in self.editor._controls
+                      if isinstance(widget, toc_editor.ttk.Entry)
+                      and str(widget.cget("textvariable")) == str(self.editor.search_text))
+        before = self.snapshot()
+        for key in ("Return", "KP_Enter"):
+            with self.subTest(key=key):
+                self.editor.search_text.set("")
+                self.editor._filter_changed()
+                self.editor.search_text.set("极限")
+                self.press_enter(search, key)
+                self.assertEqual(self.editor.tree.get_children(), ("3",))
+                self.assertEqual(self.editor._editing_index, 3)
+                self.assertEqual(self.snapshot(), before)
+                self.assertIs(self.editor.window.focus_get(), search)
+
+    def test_edit_entry_enter_commits_text_without_confirming_or_advancing(self):
+        self.load()
+        self.choose(1)
+        title_entry = next(widget for widget in self.editor._controls
+                           if isinstance(widget, toc_editor.ttk.Entry)
+                           and str(widget.cget("textvariable")) == str(self.editor.title))
+        self.editor.title.set("1.1 新标题")
+        self.press_enter(title_entry)
+        self.assertEqual(self.editor.draft.entries[1].title, "1.1 新标题")
+        self.assertFalse(self.editor.draft.entries[1].confirmed)
+        self.assertFalse(self.editor.draft.entries[4].confirmed)
+        self.assertEqual(self.editor._editing_index, 1)
+
+    def test_enter_preserves_invalid_unfinished_edit_and_selection(self):
+        self.load()
+        self.choose(1)
+        before = self.snapshot()
+        self.editor.target.set("尚未填完")
+        self.press_enter(self.editor.tree)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.editor.target.get(), "尚未填完")
+        self.assertEqual(self.editor.tree.selection(), ("1",))
+        self.assertTrue(self.errors)
 
     def test_directory_tree_has_real_parents_and_preserves_original_ids_and_pages(self):
         self.load()

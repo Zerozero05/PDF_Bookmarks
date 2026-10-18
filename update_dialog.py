@@ -8,6 +8,7 @@ import webbrowser
 from build_info import can_self_update, get_build_info
 from config_manager import load_config, update_config
 from updater.controller import UpdateController, UpdateState, startup_cleanup
+from ui_theme import refresh_theme_widgets
 
 
 STATUS = {
@@ -90,6 +91,7 @@ class UpdateDialog:
         self.cancel_button.pack(side="left", padx=8)
         ttk.Button(actions, text="发行版页面", command=lambda: webbrowser.open(
             "https://github.com/Zerozero05/PDF_Bookmarks/releases")).pack(side="right")
+        refresh_theme_widgets(self.window)
         self._refresh()
         if not can_self_update():
             self.status.set("此运行方式请通过发行版页面下载程序；可以手动检查新版本。")

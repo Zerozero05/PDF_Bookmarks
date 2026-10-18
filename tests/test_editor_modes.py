@@ -1,12 +1,14 @@
 """One directory workbench keeps generation and editing in the same window."""
 
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import hashlib
 import json
 from pathlib import Path
 import tempfile
 import time
 from types import SimpleNamespace
+from tkinter import ttk
 import unittest
 from unittest.mock import patch
 
@@ -57,9 +59,15 @@ class DirectoryWorkbenchTests(unittest.TestCase):
         except Exception:
             pass
         self.error_patch.stop()
-        self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.original_hash)
-        self.assertEqual(self.toc.read_bytes(), self.original_json)
-        self.temporary.cleanup()
+        self.error_patch = None
+        self.editor = self.main = self.root = self.executor = None
+        try:
+            self.assertEqual(hashlib.sha256(self.pdf.read_bytes()).hexdigest(), self.original_hash)
+            self.assertEqual(self.toc.read_bytes(), self.original_json)
+        finally:
+            self.temporary.cleanup()
+            # Dialog mock cycles can retain destroyed Tk roots until a worker GC.
+            gc.collect()
 
     def open(self, **kwargs):
         self.editor = toc_editor.open_editor(self.root, self.executor, **kwargs)
@@ -295,6 +303,11 @@ class DirectoryWorkbenchTests(unittest.TestCase):
                         self.assertLessEqual(x + control.winfo_width(), editor.window.winfo_width())
                         self.assertLessEqual(y + control.winfo_height(), editor.window.winfo_height())
                     self.assertEqual(found, names)
+                    if index == 1:
+                        json_entry = next(control for control in editor._controls
+                                          if isinstance(control, ttk.Entry)
+                                          and str(control.cget("textvariable")) == str(editor.json))
+                        self.assertGreater(json_entry.winfo_width(), 400)
                     for target in (editor.tree, editor.canvas):
                         self.assertTrue(target.winfo_ismapped())
                         self.assertGreater(target.winfo_width(), 300)

@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
     "existing": "skip",
     "last_dir": "",
     "topmost": False,
+    "theme": "light",
     "geometry": "1100x860",
     "editor_geometry": "1240x900",
     "editor_topmost": False,
@@ -86,6 +87,8 @@ def sanitize_settings(settings) -> dict:
         if name == "existing" and value not in {"skip", "replace"}:
             continue
         if name == "toc_save_mode" and value not in {"source", "custom"}:
+            continue
+        if name == "theme" and value not in {"light", "dark"}:
             continue
         if name in {"geometry", "editor_geometry"}:
             match = re.fullmatch(r"(\d{1,4})x(\d{1,4})(?:[+-]\d{1,6}[+-]\d{1,6})?", value)

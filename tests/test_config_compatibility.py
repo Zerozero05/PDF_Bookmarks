@@ -49,7 +49,7 @@ class ConfigCompatibilityTests(unittest.TestCase):
         original = self.fixture("schema_1_full.json")
         actual = gui_support.load_settings(self.path)
         for name in config.DEFAULT_CONFIG:
-            self.assertEqual(actual[name], original[name], name)
+            self.assertEqual(actual[name], original.get(name, config.DEFAULT_CONFIG[name]), name)
         self.assertNotIn("future_preference", actual)
         self.assertNotIn("schema", actual)
 
@@ -68,8 +68,66 @@ class ConfigCompatibilityTests(unittest.TestCase):
         result = config.migrate_config(self.path, backup_dir=self.backups)
         self.assertEqual(result["schema"], 1)
         self.assertFalse(result["backup"])
+        self.assertEqual(result["theme"], "light")
+        self.assertEqual(gui_support.load_settings(self.path)["theme"], "light")
         self.assertEqual(self.path.read_bytes(), original)
         self.assertFalse(self.backups.exists())
+
+    def test_theme_roundtrip_and_partial_saves_preserve_unknown_fields(self):
+        original = self.fixture("schema_1_full.json")
+        gui_support.save_settings({"theme": "dark"}, self.path)
+        config.update_config({"topmost": False}, self.path)
+        actual = config.read_config(self.path)
+        self.assertEqual(actual["schema"], 1)
+        self.assertEqual(actual["theme"], "dark")
+        self.assertEqual(gui_support.load_settings(self.path)["theme"], "dark")
+        self.assertEqual(actual["future_preference"], original["future_preference"])
+        self.assertEqual(actual["backup"], original["backup"])
+        gui_support.save_settings({"theme": "light"}, self.path)
+        self.assertEqual(config.read_config(self.path)["theme"], "light")
+        self.assertEqual(config.read_config(self.path)["future_preference"], original["future_preference"])
+
+    def test_invalid_themes_fall_back_without_rewriting_the_original(self):
+        self.path.parent.mkdir(parents=True)
+        for value in ("system", "Dark", "", None, 1, True, [], {}):
+            with self.subTest(value=value):
+                self.path.write_text(json.dumps({"theme": value, "backup": False,
+                                                 "future_preference": "keep"}), encoding="utf-8")
+                original = self.path.read_bytes()
+                actual = config.read_config(self.path)
+                self.assertEqual(actual["theme"], "light")
+                self.assertFalse(actual["backup"])
+                self.assertEqual(actual["future_preference"], "keep")
+                self.assertEqual(gui_support.load_settings(self.path)["theme"], "light")
+                self.assertEqual(self.path.read_bytes(), original)
+                gui_support.save_settings({"topmost": True}, self.path)
+                self.assertEqual(config.read_config(self.path)["theme"], "light")
+                self.assertEqual(config.read_config(self.path)["future_preference"], "keep")
+
+    def test_dark_theme_survives_migration_and_exact_configuration_rollback(self):
+        self.fixture("schema_1_full.json")
+        gui_support.save_settings({"theme": "dark"}, self.path)
+        original = self.path.read_bytes()
+        snapshot = config.snapshot_config(self.path, self.backups)
+        migrated = config.migrate_config(self.path, 2, {1: to_schema_2}, backup_dir=self.backups)
+        self.assertEqual(migrated["theme"], "dark")
+        self.assertEqual(json.loads(self.path.read_bytes())["theme"], "dark")
+        config.restore_config(snapshot)
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertEqual(config.read_config(self.path)["theme"], "dark")
+
+    def test_invalid_migrated_theme_preserves_original_configuration(self):
+        self.fixture("schema_1_full.json")
+        original = self.path.read_bytes()
+
+        def invalid_theme(document):
+            document = to_schema_2(document)
+            document["theme"] = "system"
+            return document
+
+        with self.assertRaisesRegex(config.ConfigError, "theme"):
+            config.migrate_config(self.path, 2, {1: invalid_theme}, backup_dir=self.backups)
+        self.assertEqual(self.path.read_bytes(), original)
 
     def test_unknown_fields_survive_gui_save_and_partial_update(self):
         original = self.fixture("schema_1_full.json")

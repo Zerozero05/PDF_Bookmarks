@@ -95,6 +95,30 @@ class WorkspaceTabTests(unittest.TestCase):
             time.sleep(.01)
         self.fail("同窗标签页操作未在时限内完成。")
 
+    def assert_window_stays(self, action):
+        self.root.update()
+        geometry, state, minimum = self.root.geometry(), self.root.state(), self.root.minsize()
+        size = self.root.winfo_width(), self.root.winfo_height()
+        configured_sizes = []
+
+        def configured(event):
+            if event.widget is self.root:
+                configured_sizes.append((event.width, event.height))
+
+        binding = self.root.bind("<Configure>", configured, add="+")
+        try:
+            action()
+            for _ in range(3):
+                self.root.update()
+                time.sleep(.01)
+            self.assertEqual(self.root.geometry(), geometry)
+            self.assertEqual(self.root.state(), state)
+            self.assertEqual(self.root.minsize(), minimum)
+            self.assertTrue(all(actual == size for actual in configured_sizes),
+                            f"标签切换期间窗口曾改变尺寸：{configured_sizes}")
+        finally:
+            self.root.unbind("<Configure>", binding)
+
     def editor(self):
         self.main._open_editor()
         self.root.update()
@@ -165,15 +189,159 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertTrue(editor._dirty_fields)
         self.assertFalse(self.errors)
 
-    def test_closing_editor_returns_to_main_without_destroying_root(self):
-        editor = self.editor()
-        editor.close()
+    def test_first_editor_open_and_repeated_tab_switches_preserve_window_geometry_and_state(self):
+        self.root.maxsize(2000, 1400)
+        self.root.deiconify()
+        self.root.geometry("1100x860+80+60")
         self.root.update()
+        self.main.editor_settings["editor_geometry"] = "1360x980+160+120"
+        self.assert_window_stays(self.main._open_editor)
+        self.assertIsNotNone(self.main.editor)
+        self.assertEqual(self.root.minsize(), (1000, 760))
+        for _ in range(12):
+            self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
+            self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
+
+    def test_resizing_either_workspace_page_is_preserved_on_the_other_page(self):
+        self.root.maxsize(2000, 1400)
+        self.root.deiconify()
+        self.editor()
+        for page, other, geometry in (
+                (self.main.main_page, self.main.editor_page, "1040x780+80+60"),
+                (self.main.editor_page, self.main.main_page, "1320x940+160+120")):
+            with self.subTest(page=str(page)):
+                self.main.workspace_tabs.select(page)
+                self.root.update()
+                self.root.geometry(geometry)
+                self.root.update()
+                self.assert_window_stays(lambda: self.main.workspace_tabs.select(other))
+                self.assert_window_stays(lambda: self.main.workspace_tabs.select(page))
+
+    def test_width_drag_coalesces_layout_without_changing_preview_or_edits(self):
+        self.root.maxsize(2000, 1400)
+        self.root.geometry("1100x860+80+60")
+        self.root.deiconify()
+        editor = self.editor()
+        model = self.load_sample(editor)
+        self.spin(lambda: self.main.workspace_tabs.winfo_width() == self.root.winfo_width())
+        original, photo = deepcopy(asdict(model)), editor._photo
+        configured = []
+        binding = self.main.workspace_tabs.bind(
+            "<Configure>", lambda event: configured.append(event.width), add="+")
+        try:
+            with patch.object(self.main.executor, "submit", wraps=self.main.executor.submit) as submit:
+                widths = list(range(1120, 1321, 20))
+                for width in widths:
+                    self.root.geometry(f"{width}x860")
+                    self.root.update()
+                self.assertLess(len(configured), len(widths) // 2,
+                                "连续拖宽时仍逐次重排全部控件。")
+                self.spin(lambda: self.main.workspace_tabs.winfo_width() == self.root.winfo_width()
+                          and self.main.workspace_tabs.winfo_height() == self.root.winfo_height())
+                self.assertEqual(asdict(model), original)
+                self.assertIs(editor._photo, photo)
+                submit.assert_not_called()
+            self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
+        finally:
+            self.main.workspace_tabs.unbind("<Configure>", binding)
+
+    def test_close_cancels_pending_window_layout(self):
+        self.root.deiconify()
+        self.editor()
+        self.spin(lambda: self.main._resize_after is None
+                  and self.main._workspace_size == (self.root.winfo_width(), self.root.winfo_height()))
+        # Schedule synchronously: update() could already run the 80ms timer,
+        # leaving no pending work for this cancellation test to inspect.
+        self.main._resize_workspace(SimpleNamespace(widget=self.root,
+            width=self.root.winfo_width() + 1, height=self.root.winfo_height()))
+        pending = self.main._resize_after
+        self.assertIsNotNone(pending)
+        with patch.object(self.root, "after_cancel", wraps=self.root.after_cancel) as cancel:
+            self.main._close()
+        cancel.assert_any_call(pending)
+        self.assertIsNone(self.main._resize_after)
+        self.assertTrue(self.main.closed)
+
+    def test_theme_switch_from_either_page_preserves_work_and_saves_preference(self):
+        editor = self.editor()
+        model = self.load_sample(editor)
+        original, photo = deepcopy(asdict(model)), editor._photo
+        editor.title.set("正在编辑的标题")
+        editor._cancel_edit_timer()
+
+        def theme_button(parent):
+            for child in parent.winfo_children():
+                if isinstance(child, ttk.Checkbutton) and child.cget("text") == "夜间模式":
+                    return child
+                found = theme_button(child)
+                if found is not None:
+                    return found
+
+        self.assertIs(editor.theme_var, self.main.theme)
+        for page, mode in ((self.main.main_page, "dark"), (self.main.editor_page, "light")):
+            theme_button(page).invoke()
+            self.root.update()
+            self.assertEqual(self.main.theme.get(), mode)
+            self.assertEqual(ttk.Style(self.root).theme_use(), "pdf_" + mode)
+            self.assertEqual(gui_support.load_settings(self.settings)["theme"], mode)
+            self.assertEqual(asdict(model), original)
+            self.assertEqual(editor.title.get(), "正在编辑的标题")
+            self.assertIs(editor._photo, photo)
+
+    def test_editor_save_controls_remain_visible_at_minimum_size_in_both_themes(self):
+        self.root.maxsize(2000, 1400)
+        self.root.geometry("1000x760+80+60")
+        self.root.deiconify()
+        editor = self.editor()
+        for mode in ("light", "dark"):
+            self.main.theme.set(mode)
+            self.main._set_theme()
+            self.spin(lambda: self.main.workspace_tabs.winfo_height() == self.root.winfo_height())
+            self.root.update()
+            for button in editor._controls:
+                if isinstance(button, ttk.Button) and button.cget("text") in (
+                        "保存 JSON 并返回", "另存为…", "下一待核对"):
+                    self.assertTrue(button.winfo_ismapped())
+                    self.assertGreaterEqual(button.winfo_rootx(), self.root.winfo_rootx())
+                    self.assertGreaterEqual(button.winfo_rooty(), self.root.winfo_rooty())
+                    self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
+                                         self.root.winfo_rootx() + self.root.winfo_width())
+                    self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
+                                         self.root.winfo_rooty() + self.root.winfo_height())
+
+    def test_maximized_and_restored_workspace_stay_in_place_while_switching_tabs(self):
+        self.root.maxsize(2000, 1400)
+        self.root.deiconify()
+        self.root.geometry("1100x860+80+60")
+        self.root.update()
+        self.editor()
+        try:
+            for state in ("zoomed", "normal"):
+                with self.subTest(state=state):
+                    self.root.state(state)
+                    self.root.update()
+                    self.assertEqual(self.root.state(), state)
+                    for _ in range(3):
+                        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
+                        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
+        finally:
+            self.root.state("normal")
+            self.root.update()
+
+    def test_closing_editor_returns_to_main_without_destroying_root(self):
+        self.root.maxsize(2000, 1400)
+        self.root.deiconify()
+        self.root.geometry("1100x860+80+60")
+        editor = self.editor()
+        self.assert_window_stays(editor.close)
         self.assertTrue(editor.closed)
         self.assertFalse(editor.window.winfo_exists())
         self.assertTrue(self.root.winfo_exists())
         self.assertFalse(self.main.closed)
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.main_page))
+        self.assert_window_stays(self.main._open_editor)
+        self.assertIsNot(self.main.editor, editor)
+        self.assertEqual(self.main.workspace_tabs.select(), str(self.main.editor_page))
 
     def test_selecting_tab_after_editor_close_creates_a_new_frame(self):
         previous = self.editor()
@@ -320,8 +488,10 @@ class WorkspaceTabTests(unittest.TestCase):
         self.spin(lambda: editor._photo is not None)
         target = self.folder / "人工校对 新目录.json"
         with patch.object(toc_editor.filedialog, "asksaveasfilename", return_value=str(target)):
-            editor.save_as()
-            self.spin(lambda: editor.closed and not self.main.busy and not self.main.pending_editor_saves)
+            def save_and_return():
+                editor.save_as()
+                self.spin(lambda: editor.closed and not self.main.busy and not self.main.pending_editor_saves)
+            self.assert_window_stays(save_and_return)
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.main_page))
         self.assertEqual({item["pdf_path"] for item in self.main.items.values()}, {self.pdf, other})
         matched = next(item for item in self.main.items.values() if item["pdf_path"] == self.pdf)
@@ -330,33 +500,31 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertEqual(other.read_bytes(), self.pdf.read_bytes())
         self.assertEqual(json.loads(target.read_text(encoding="utf8"))["bookmarks"][0]["title"], "第一章 基础")
 
-    def test_separate_page_size_and_topmost_preferences_survive_close_and_reopen(self):
-        # Keep off-screen size checks independent of the CI desktop's default cap.
+    def test_shared_window_geometry_and_separate_topmost_preferences_survive_close_and_reopen(self):
+        # Keep requested sizes independent of the CI desktop's default cap.
         self.root.maxsize(2000, 1400)
-        self.root.geometry("1040x780+32000+32000")
+        self.root.geometry("1040x780+80+60")
         self.root.deiconify()
         self.main.topmost.set(False)
         self.root.update()
         self.assertEqual(self.root.geometry().split("+", 1)[0], "1040x780")
-        editor = self.editor()
-        self.root.geometry("1360x980+32000+32000")
+        legacy_editor_geometry = self.main.editor_settings["editor_geometry"]
+        self.assert_window_stays(self.main._open_editor)
+        editor = self.main.editor
+        self.root.geometry("1360x980+160+120")
         editor.topmost.set(True)
         editor._set_topmost()
         self.root.update()
         self.assertTrue(self.root.attributes("-topmost"))
-        self.main.workspace_tabs.select(self.main.main_page)
-        self.root.update()
-        self.assertEqual(self.root.geometry().split("+", 1)[0], "1040x780")
+        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
         self.assertFalse(self.root.attributes("-topmost"))
-        self.main.workspace_tabs.select(self.main.editor_page)
-        self.root.update()
-        self.assertEqual(self.root.geometry().split("+", 1)[0], "1360x980")
+        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
         self.assertTrue(self.root.attributes("-topmost"))
         self.main._close()
         self.assertTrue(self.main.closed)
         saved = gui_support.load_settings(self.settings)
-        self.assertEqual(saved["geometry"], "1040x780")
-        self.assertEqual(saved["editor_geometry"].split("+", 1)[0], "1360x980")
+        self.assertEqual(saved["geometry"].split("+", 1)[0], "1360x980")
+        self.assertEqual(saved["editor_geometry"], legacy_editor_geometry)
         self.assertFalse(saved["topmost"])
         self.assertTrue(saved["editor_topmost"])
         self.root = TkinterDnD.Tk()
@@ -364,36 +532,36 @@ class WorkspaceTabTests(unittest.TestCase):
         self.root.withdraw()
         self.root.report_callback_exception = lambda *args, errors=self.callback_errors: errors.append(args)
         self.main = bookmarks_gui.BookmarkWindow(self.root, settings_path=self.settings)
-        self.root.geometry("1040x780+32000+32000")
         self.root.deiconify()
         self.root.update()
-        self.assertEqual(self.root.geometry().split("+", 1)[0], "1040x780")
-        self.assertFalse(self.root.attributes("-topmost"))
-        self.editor()
         self.assertEqual(self.root.geometry().split("+", 1)[0], "1360x980")
+        self.assertFalse(self.root.attributes("-topmost"))
+        self.assert_window_stays(self.main._open_editor)
         self.assertTrue(self.root.attributes("-topmost"))
+        self.assertEqual(self.root.minsize(), (1000, 760))
 
-    def test_hidden_editor_save_preferences_do_not_capture_main_page_geometry(self):
+    def test_hidden_editor_preferences_preserve_shared_geometry_and_legacy_standalone_geometry(self):
         self.root.maxsize(2000, 1400)
-        self.root.geometry("1040x780+32000+32000")
+        self.root.geometry("1040x780+80+60")
         self.root.deiconify()
         self.root.update()
-        editor = self.editor()
-        self.root.geometry("1360x980+32000+32000")
+        legacy_editor_geometry = self.main.editor_settings["editor_geometry"]
+        self.assert_window_stays(self.main._open_editor)
+        editor = self.main.editor
+        self.root.geometry("1360x980+160+120")
         self.root.update()
-        self.main.workspace_tabs.select(self.main.main_page)
-        self.root.update()
+        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
+        geometry = self.root.geometry()
         editor.save_dir.set(str(self.folder))
         editor.save_mode.set("custom")
         self.root.update()
         saved = gui_support.load_settings(self.settings)
-        self.assertEqual(saved["geometry"], "1040x780")
-        self.assertEqual(saved["editor_geometry"].split("+", 1)[0], "1360x980")
+        self.assertEqual(self.root.geometry(), geometry)
+        self.assertEqual(saved["geometry"].split("+", 1)[0], "1360x980")
+        self.assertEqual(saved["editor_geometry"], legacy_editor_geometry)
         self.assertEqual(saved["toc_save_dir"], str(self.folder))
         self.assertEqual(saved["toc_save_mode"], "custom")
-        self.main.workspace_tabs.select(self.main.editor_page)
-        self.root.update()
-        self.assertEqual(self.root.geometry().split("+", 1)[0], "1360x980")
+        self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
 
     def test_immediate_close_cancels_initial_json_import_idle_callback(self):
         toc = self.folder / "已存在的目录.json"

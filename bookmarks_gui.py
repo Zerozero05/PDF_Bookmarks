@@ -14,19 +14,23 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 from bookmarks_core import discover_pairs, inspect_pdf, write_plan
 from gui_support import (delete_written_toc, dropped_pairs, load_settings, render_page,
                          save_settings, settings_path, toc_file_signature)
+from ui_theme import apply_theme, refresh_theme_widgets
 
 
 class BookmarkWindow:
     def __init__(self, root, initial_paths=None, settings_path=None):
         settings = load_settings(settings_path)
         self.root, self.settings_path = root, settings_path
-        self._main_geometry = settings["geometry"]
+        self.theme = tk.StringVar(master=root, value=settings["theme"])
+        apply_theme(root, self.theme.get())
         root.title("PDF_Bookmarks · PDF 书签目录")
         root.geometry(settings["geometry"])
-        root.minsize(900, 650)
+        root.minsize(1000, 760)
         self.events = queue.Queue()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf-bookmarks")
         self.busy = self.closed = False
+        self._resize_after = None
+        self._workspace_size = None
         self.editor = None
         self.editor_settings = {key: settings[key] for key in
                                 ("editor_geometry", "editor_topmost", "toc_save_mode", "toc_save_dir")}
@@ -54,6 +58,7 @@ class BookmarkWindow:
         self.file_detail = tk.StringVar(value="选择一本查看书签；勾选决定是否写入。")
         self.page_status = tk.StringVar(value="点击书签查看目标页面（只读）")
         self._build()
+        refresh_theme_widgets(root)
         self._apply_topmost()
         self._register_drop()
         self._variable_traces = []
@@ -68,7 +73,8 @@ class BookmarkWindow:
 
     def _build(self):
         self.workspace_tabs = ttk.Notebook(self.root)
-        self.workspace_tabs.pack(fill="both", expand=True)
+        self.workspace_tabs.place(x=0, y=0)
+        self.root.bind("<Configure>", self._resize_workspace, add="+")
         self.main_page = ttk.Frame(self.workspace_tabs)
         self.editor_page = ttk.Frame(self.workspace_tabs)
         self.workspace_tabs.add(self.main_page, text="主界面 · 预览与写入")
@@ -79,8 +85,11 @@ class BookmarkWindow:
         outer.pack(fill="both", expand=True)
         header = ttk.Frame(outer)
         header.pack(fill="x", pady=(0, 8))
-        ttk.Label(header, text="PDF_Bookmarks", font=("Microsoft YaHei", 14)).pack(side="left")
+        ttk.Label(header, text="PDF_Bookmarks", font=("Microsoft YaHei", 14, "bold"),
+                  style="Title.TLabel").pack(side="left")
         ttk.Checkbutton(header, text="置顶", variable=self.topmost).pack(side="right")
+        ttk.Checkbutton(header, text="夜间模式", variable=self.theme, onvalue="dark", offvalue="light",
+                        command=self._set_theme).pack(side="right", padx=8)
         self.update_button = ttk.Button(header, text="帮助 / 更新", command=self._show_updates)
         self.update_button.pack(side="right", padx=8)
         self.directory_button = ttk.Button(header, text="生成 / 编辑目录…", command=self._open_editor)
@@ -105,7 +114,7 @@ class BookmarkWindow:
         self.inputs.extend((add, clear))
         self.source_tabs.bind("<<NotebookTabChanged>>", self._source_tab_changed)
 
-        options = ttk.Frame(outer)
+        options = ttk.LabelFrame(outer, text="写入设置", padding=8)
         options.pack(fill="x", pady=(0, 8))
         options.columnconfigure(1, weight=1)
         ttk.Label(options, text="已有书签").grid(row=0, column=0, sticky="w", padx=(0, 8))
@@ -126,12 +135,13 @@ class BookmarkWindow:
 
         actions = ttk.Frame(outer)
         actions.pack(fill="x", pady=(0, 8))
-        self.preview_button = ttk.Button(actions, text="1. 预览", command=self._preview)
+        self.preview_button = ttk.Button(actions, text="1. 预览", command=self._preview, style="Accent.TButton")
         self.preview_button.pack(side="left")
         self.write_button = ttk.Button(actions, text="2. 写入勾选的 PDF", command=self._write, state="disabled")
         self.write_button.pack(side="left", padx=8)
-        ttk.Label(actions, textvariable=self.selection_status).pack(side="left", padx=6)
-        ttk.Label(actions, textvariable=self.status, wraplength=600).pack(side="left", padx=8)
+        ttk.Label(actions, textvariable=self.selection_status, style="Muted.TLabel").pack(side="right", padx=6)
+        ttk.Label(outer, textvariable=self.status, wraplength=950,
+                  style="Muted.TLabel").pack(fill="x", pady=(0, 8))
 
         body = ttk.Panedwindow(outer, orient="horizontal")
         body.pack(fill="both", expand=True)
@@ -178,6 +188,33 @@ class BookmarkWindow:
         self.log = tk.Text(logs, wrap="none", state="disabled", font=("Microsoft YaHei", 9))
         self._scrollers(logs, self.log)
         self._backup_state()
+
+    def _resize_workspace(self, event):
+        if event.widget is not self.root or self.closed:
+            return
+        if self._resize_after is not None:
+            self.root.after_cancel(self._resize_after)
+            self._resize_after = None
+        if self._workspace_size is None:
+            self._layout_workspace()
+        elif (event.width, event.height) != self._workspace_size:
+            # Keep border dragging responsive instead of laying out every pixel.
+            self._resize_after = self.root.after(80, self._layout_workspace)
+
+    def _layout_workspace(self):
+        self._resize_after = None
+        if not self.closed:
+            size = self.root.winfo_width(), self.root.winfo_height()
+            if size != self._workspace_size:
+                self.workspace_tabs.place_configure(width=size[0], height=size[1])
+                self._workspace_size = size
+
+    def _set_theme(self):
+        apply_theme(self.root, self.theme.get())
+        try:
+            self._save_settings()
+        except OSError as error:
+            messagebox.showwarning("设置未保存", f"无法保存外观设置：{error}", parent=self.root)
 
     def _path_row(self, frame, row, label, variable, command, columns=3):
         frame.columnconfigure(1, weight=1)
@@ -253,21 +290,13 @@ class BookmarkWindow:
                 return
         if selected == self._active_workspace:
             return
-        if self._active_workspace == str(self.main_page):
-            if self.root.winfo_ismapped():
-                self._main_geometry = self.root.geometry()
-        elif self.root.winfo_ismapped():
-            self.editor_settings["editor_geometry"] = self.root.geometry()
+        if self._active_workspace == str(self.editor_page) and self.root.winfo_ismapped():
             if self.editor is not None and not self.editor.closed:
                 self.editor._persist_settings()
         self._active_workspace = selected
         if selected == str(self.editor_page):
-            self.root.minsize(1000, 760)
-            self.root.geometry(self.editor_settings["editor_geometry"])
             self.root.attributes("-topmost", self.editor.topmost.get())
         else:
-            self.root.minsize(900, 650)
-            self.root.geometry(self._main_geometry)
             self._apply_topmost()
         self.root.update_idletasks()
 
@@ -339,7 +368,8 @@ class BookmarkWindow:
                                   editor_settings=self.editor_settings, on_settings_changed=self._editor_settings_changed,
                                   draft_dir=settings_path(self.settings_path).parent / "editor_drafts",
                                   host=self.editor_page, on_closed=self._editor_closed,
-                                  task_guard=self._editor_task_blocked)
+                                  task_guard=self._editor_task_blocked, theme_var=self.theme,
+                                  on_theme_changed=self._set_theme)
         if self.editor is not None:
             self.workspace_tabs.select(self.editor_page)
 
@@ -804,8 +834,8 @@ class BookmarkWindow:
                        "recursive": self.recursive.get(),
                        "existing": "replace" if self.existing.get() == "替换已有书签" else "skip",
                        "last_dir": self.last_dir, "topmost": self.topmost.get(),
-                       "geometry": (self._main_geometry if self._active_workspace == str(self.editor_page)
-                                    else self.root.geometry()).split("+", 1)[0].split("-", 1)[0],
+                       "theme": self.theme.get(),
+                       "geometry": self.root.geometry().split("+", 1)[0].split("-", 1)[0],
                        **self.editor_settings}, self.settings_path)
 
     def _show_updates(self):
@@ -856,6 +886,9 @@ class BookmarkWindow:
             self.updates.close()
         self._render_token += 1
         self.root.after_cancel(self._poll_after)
+        if self._resize_after is not None:
+            self.root.after_cancel(self._resize_after)
+            self._resize_after = None
         for variable, callback in self._variable_traces:
             variable.trace_remove("write", callback)
         self._variable_traces.clear()

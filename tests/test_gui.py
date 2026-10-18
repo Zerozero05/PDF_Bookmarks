@@ -269,7 +269,8 @@ class GuiWindowTests(unittest.TestCase):
                                             on_settings_changed=self.window._editor_settings_changed,
                                             draft_dir=self.settings_path.parent / "editor_drafts",
                                             host=self.window.editor_page, on_closed=self.window._editor_closed,
-                                            task_guard=self.window._editor_task_blocked)
+                                           task_guard=self.window._editor_task_blocked,
+                                           theme_var=self.window.theme, on_theme_changed=self.window._set_theme)
             opened.reset_mock()
             self.window._open_editor(True)
             opened.assert_called_once_with(self.root, self.window.executor, pdf_path=second,
@@ -278,7 +279,8 @@ class GuiWindowTests(unittest.TestCase):
                                             on_settings_changed=self.window._editor_settings_changed,
                                             draft_dir=self.settings_path.parent / "editor_drafts",
                                             host=self.window.editor_page, on_closed=self.window._editor_closed,
-                                            task_guard=self.window._editor_task_blocked)
+                                            task_guard=self.window._editor_task_blocked,
+                                            theme_var=self.window.theme, on_theme_changed=self.window._set_theme)
 
     def test_saved_generated_json_retains_batch_and_previews_without_writing(self):
         first, first_toc = self.pdf_pair()

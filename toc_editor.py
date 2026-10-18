@@ -14,6 +14,7 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP
 
 from bookmarks_core import BookmarkError
 from gui_support import render_page
+from ui_theme import refresh_theme_widgets
 from editor_session import DraftStore, UndoHistory, restore_state, snapshot_state
 from toc_generation import DraftEntry, _page_regions, apply_mapping, generate_toc, load_draft, save_toc, section_titles
 
@@ -68,13 +69,14 @@ def valid_target(entry, page_count):
 class TocEditor:
     def __init__(self, parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                  editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
-                 on_closed=None, task_guard=None):
+                 on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None):
         self.parent, self.executor, self.on_saved = parent, executor, on_saved
         self.editor_settings = dict(editor_settings or {})
         self.on_settings_changed = on_settings_changed
         self.mode = mode or ("edit" if toc_path else "generate")
         self.embedded = host is not None
         self.on_closed, self.task_guard = on_closed, task_guard
+        self.theme_var, self.on_theme_changed = theme_var, on_theme_changed
         self.window = ttk.Frame(host) if self.embedded else tk.Toplevel(parent)
         if self.embedded:
             self.window.pack(fill="both", expand=True)
@@ -146,6 +148,7 @@ class TocEditor:
         self.save_dir = tk.StringVar(value=self.editor_settings.get("toc_save_dir", ""))
         self.save_location = tk.StringVar(value="保存位置：选择 PDF 后显示。")
         self._build()
+        refresh_theme_widgets(self.window)
         self._register_drop()
         self._variable_traces = []
         for variable in (self.level, self.title, self.printed, self.target):
@@ -176,17 +179,21 @@ class TocEditor:
         self._button(parent, "浏览…", command).grid(row=row, column=2, padx=(8, 0), pady=3)
 
     def _build(self):
-        outer = ttk.Frame(self.window, padding=10)
+        outer = ttk.Frame(self.window, padding=8)
         outer.pack(fill="both", expand=True)
         source = ttk.Frame(outer)
         source.pack(fill="x")
         source.columnconfigure(1, weight=1)
         self._path_row(source, 0, "PDF", self.pdf, self._choose_pdf)
         ttk.Checkbutton(source, text="置顶", variable=self.topmost, command=self._set_topmost).grid(row=0, column=3, padx=(8, 0))
+        if self.theme_var is not None:
+            ttk.Checkbutton(source, text="夜间模式", variable=self.theme_var, onvalue="dark", offvalue="light",
+                            command=self.on_theme_changed).grid(row=0, column=4, padx=(8, 0))
         self.source_tabs = ttk.Notebook(outer)
-        self.source_tabs.pack(fill="x", pady=6)
+        self.source_tabs.pack(fill="x", pady=4)
         actions = ttk.Frame(self.source_tabs, padding=6)
         imported = ttk.Frame(self.source_tabs, padding=6)
+        imported.columnconfigure(1, weight=1)
         self.source_tabs.add(actions, text="从 PDF 生成")
         self.source_tabs.add(imported, text="编辑已有 JSON")
         self._path_row(imported, 0, "目录 JSON", self.json, self._choose_json)
@@ -205,12 +212,13 @@ class TocEditor:
         self.source_tabs.select(1 if self.mode == "edit" else 0)
         self.source_tabs.bind("<<NotebookTabChanged>>", self._source_tab_changed)
         feedback = ttk.Frame(outer)
-        feedback.pack(fill="x", pady=(0, 3))
+        feedback.pack(fill="x", pady=(0, 2))
         self.cancel_button = ttk.Button(feedback, text="取消操作", command=self.cancel_operation, state="disabled")
         self.cancel_button.pack(side="right")
-        ttk.Label(feedback, textvariable=self.status, wraplength=1060).pack(side="left", fill="x", expand=True)
+        ttk.Label(feedback, textvariable=self.status, wraplength=930,
+                  style="Muted.TLabel").pack(side="left", fill="x", expand=True)
         summary_row = ttk.Frame(outer)
-        summary_row.pack(fill="x", pady=(0, 6))
+        summary_row.pack(fill="x", pady=(0, 4))
         options = ttk.Frame(summary_row)
         options.pack(side="right")
         ttk.Label(options, text="目录布局").pack(side="left")
@@ -232,27 +240,30 @@ class TocEditor:
         body.add(left, weight=3)
         body.add(right, weight=3)
         tools = ttk.Frame(left)
-        tools.pack(fill="x", pady=(0, 4))
+        tools.pack(fill="x", pady=(0, 3))
         self._button(tools, "撤销", self.undo, width=5).pack(side="left")
         self._button(tools, "重做", self.redo, width=5).pack(side="left", padx=3)
         self._button(tools, "暂存草稿", self.save_draft, width=8).pack(side="left", padx=(6, 3))
         self._button(tools, "恢复草稿", self.restore_draft, width=8).pack(side="left")
         ttk.Checkbutton(tools, text="自动暂存", variable=self.auto_save, command=self._schedule_draft).pack(side="left", padx=5)
         filters = ttk.Frame(left)
-        filters.pack(fill="x", pady=(0, 4))
+        filters.pack(fill="x", pady=(0, 2))
         search = ttk.Entry(filters, textvariable=self.search_text, width=14)
         search.pack(side="left", fill="x", expand=True)
         search.bind("<Return>", self._filter_changed)
+        search.bind("<KP_Enter>", self._filter_changed)
         self._controls.append(search)
         self._button(filters, "查找", self._filter_changed, width=5).pack(side="left", padx=3)
+        filter_options = ttk.Frame(left)
+        filter_options.pack(fill="x", pady=(0, 3))
         for variable, values, width, callback in (
                 (self.filter_mode, ("全部", "待确认", "低可信", "未知页码"), 8, self._filter_changed),
                 (self.view_mode, ("详细表格", "目录树"), 9, self._view_changed)):
-            combo = ttk.Combobox(filters, textvariable=variable, values=values, width=width, state="readonly")
+            combo = ttk.Combobox(filter_options, textvariable=variable, values=values, width=width, state="readonly")
             combo.pack(side="left", padx=2)
             combo.bind("<<ComboboxSelected>>", callback)
             self._controls.append(combo)
-        self._button(filters, "下一待核对", self.next_pending, width=10).pack(side="left", padx=(3, 0))
+        self._button(filter_options, "下一待核对", self.next_pending, width=10).pack(side="right")
         tree_frame = ttk.Frame(left)
         tree_frame.pack(fill="both", expand=True)
         tree_frame.columnconfigure(0, weight=1)
@@ -279,12 +290,14 @@ class TocEditor:
         self.tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         self.tree.bind("<<TreeviewSelect>>", self._selected)
         self.tree.bind("<KeyPress>", self._level_key)
+        self.tree.bind("<Return>", self.confirm_selected)
+        self.tree.bind("<KP_Enter>", self.confirm_selected)
         self.tree.bind("<Double-1>", self._inline_edit)
         self.tree.bind("<ButtonPress-1>", self._drag_start)
         self.tree.bind("<B1-Motion>", self._drag_motion)
         self.tree.bind("<ButtonRelease-1>", self._drag_end)
-        tree_hint = ttk.Label(left, text="Ctrl / Shift 多选；按 1–9 改层级；左右拖动层级栏；双击编辑。",
-                              wraplength=680)
+        tree_hint = ttk.Label(left, text="Enter 确认并下一项；Ctrl / Shift 多选；1–9 改层级；左右拖动层级栏；双击编辑。",
+                              wraplength=470, style="Muted.TLabel")
         tree_hint.pack(fill="x", pady=(3, 0))
 
         edit = ttk.LabelFrame(left, text="编辑选中项", padding=6)
@@ -308,7 +321,8 @@ class TocEditor:
                                   command=lambda: self._apply_auto(report=True))
         confirm.pack(side="left", padx=8)
         self._controls.append(confirm)
-        ttk.Label(edit, textvariable=self.entry_note, wraplength=620).grid(row=2, column=0, columnspan=4, sticky="w", padx=3, pady=3)
+        ttk.Label(edit, textvariable=self.entry_note, wraplength=450,
+                  style="Muted.TLabel").grid(row=2, column=0, columnspan=4, sticky="w", padx=3, pady=3)
         edit_actions = ttk.Frame(edit)
         edit_actions.grid(row=3, column=0, columnspan=4, sticky="ew")
         for label, command in (("更新选中项", self.update_entry), ("添加", self.add_entry),
@@ -377,7 +391,7 @@ class TocEditor:
         self.segments.pack(side="left", fill="x", expand=True)
         self._button(segmented, "应用分段映射", self.apply_segments).pack(side="left", padx=8)
         save_options = ttk.Frame(outer)
-        save_options.pack(fill="x", pady=(0, 6))
+        save_options.pack(fill="x", pady=(0, 4))
         save_options.columnconfigure(2, weight=1)
         for column, value, label in ((0, "source", "保存到原目录"), (1, "custom", "自定义目录")):
             button = ttk.Radiobutton(save_options, text=label, variable=self.save_mode, value=value)
@@ -392,7 +406,7 @@ class TocEditor:
         footer.pack(fill="x")
         self._button(footer, "确认所有已核对项…", self.confirm_all).pack(side="left")
         ttk.Checkbutton(footer, text="页码映射 / 高级", variable=self.advanced_open, command=self._toggle_advanced).pack(side="left", padx=8)
-        self._button(footer, "保存 JSON 并返回", self.save).pack(side="right")
+        self._button(footer, "保存 JSON 并返回", self.save, style="Accent.TButton").pack(side="right")
         ttk.Button(footer, text="关闭", command=self.close).pack(side="right", padx=6)
         self._button(footer, "另存为…", self.save_as).pack(side="right", padx=3)
         # Reserve the bottom controls before the expandable preview.  Otherwise
@@ -400,12 +414,12 @@ class TocEditor:
         for frame in (body, mapping_tabs, save_options, footer):
             frame.pack_forget()
         footer.pack(side="bottom", fill="x")
-        save_options.pack(side="bottom", fill="x", pady=(0, 6))
-        ttk.Label(outer, textvariable=self.draft_status, foreground="#53616d").pack(side="bottom", fill="x", pady=(2, 4))
+        save_options.pack(side="bottom", fill="x", pady=(0, 4))
+        ttk.Label(outer, textvariable=self.draft_status, style="Muted.TLabel").pack(side="bottom", fill="x", pady=(1, 3))
         body.pack(fill="both", expand=True)
         for frame in (tree_frame, tree_hint, edit):
             frame.pack_forget()
-        edit.pack(side="bottom", fill="x", pady=(6, 0))
+        edit.pack(side="bottom", fill="x", pady=(4, 0))
         tree_hint.pack(side="bottom", fill="x", pady=(3, 0))
         tree_frame.pack(fill="both", expand=True)
         self._shortcut_bindings = []
@@ -620,6 +634,7 @@ class TocEditor:
     def _filter_changed(self, _event=None):
         if not self.busy and self.draft is not None and self._apply_auto(report=True):
             self._refresh(self._index())
+        return "break"
 
     def _view_changed(self, _event=None):
         self._filter_changed()
@@ -647,6 +662,35 @@ class TocEditor:
                 self._selected()
                 return
         self.status.set("当前筛选范围没有待核对项。可切换“全部”继续查看。")
+
+    def confirm_selected(self, _event=None):
+        if self.closed or self.busy or self.draft is None:
+            return "break"
+        indices = sorted(int(iid) for iid in self.tree.selection())
+        if not indices:
+            return "break"
+        try:
+            self._same_pdf()
+            if not self._apply_auto(report=True):
+                return "break"
+            missing = sum(not valid_target(self.draft.entries[index], self.draft.page_count) for index in indices)
+            if missing:
+                raise ValueError(f"所选目录中有 {missing} 项目标页未知或越界，请先校正；本次未确认所选项。")
+            if any(not self.draft.entries[index].title.strip() for index in indices):
+                raise ValueError("所选目录中有空标题，请先填写；本次未确认所选项。")
+            for index in indices:
+                self.draft.entries[index].confirmed = True
+            count = len(self.draft.entries)
+            following = ((indices[-1] + step) % count for step in range(1, count + 1))
+            target = next((index for index in following if not self.draft.entries[index].confirmed
+                           and self._matches(self.draft.entries[index])), None)
+            self._refresh(target if target is not None else indices)
+            self.status.set(f"已确认所选 {len(indices)} 项；" + (
+                "已跳到下一待核对项。" if target is not None else
+                "当前筛选范围没有待核对项。可切换“全部”继续查看。"))
+        except (ValueError, OSError) as error:
+            self._error(error)
+        return "break"
 
     def _toggle_advanced(self):
         if self.advanced_open.get():
@@ -1631,7 +1675,7 @@ class TocEditor:
     def _persist_settings(self):
         updates = {"editor_topmost": self.topmost.get(), "toc_save_dir": self.save_dir.get(),
                    "toc_save_mode": self.save_mode.get()}
-        if not self.embedded or self.window.winfo_ismapped():
+        if not self.embedded:
             updates["editor_geometry"] = self.window.winfo_toplevel().geometry()
         self.editor_settings.update(updates)
         if self.on_settings_changed:
@@ -1740,14 +1784,14 @@ class TocEditor:
         self.history = UndoHistory(limit=80)
         self.window.destroy()
         callback = self.on_closed
-        self.on_saved = self.on_settings_changed = self.on_closed = self.task_guard = None
+        self.on_saved = self.on_settings_changed = self.on_closed = self.task_guard = self.on_theme_changed = None
         if callback:
             callback()
 
 
 def open_editor(parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                 editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
-                on_closed=None, task_guard=None):
+                on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None):
     """Open an editor sharing the main window's serialized PDF worker."""
     return TocEditor(parent, executor, pdf_path, toc_path, on_saved, mode, editor_settings,
-                     on_settings_changed, draft_dir, host, on_closed, task_guard)
+                     on_settings_changed, draft_dir, host, on_closed, task_guard, theme_var, on_theme_changed)
