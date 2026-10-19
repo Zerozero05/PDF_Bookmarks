@@ -1,6 +1,16 @@
 # 版本维护与本地文件管理
 
-正式源代码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，正式 Windows 下载放在 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)，是否可用以实际附件为准。PDF_Bookmarks 可独立处理普通 PDF，也适配 Zotero 附件。当前源码版本为 v1.8.1，共用标题栏置顶按钮并修复开启后不能取消；继续保留稳定切页、拖宽合并排版、夜间模式与Enter多选确认/查找。同窗标签页、未完成草稿、撤销/重做、筛选/目录树、原目录行定位、逐页识别区域/栏线、布局/编号选择、预览滚动/缩放和事务自动更新继续可用。原设置位置、目录 JSON、CLI、配置 schema 1、PDF 写入及备份默认值兼容，历史发行版继续保留。
+正式源码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，程序从 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases) 下载。当前版本见 [VERSION](../VERSION)，功能与最短使用流程见 [README](../README.md)，修改边界见 [AGENTS](../AGENTS.md)。
+
+## 更新日志与文档维护
+
+1. 每次版本、功能或独立文档更新，同步维护 README 的更新摘要和 [CHANGELOG](../CHANGELOG.md) 的完整记录。保留全部既有历史；文档更新按日期记录，不递增程序版本、不发布新程序。
+2. README 使用“版本／记录、日期、主要变更”三列表格，最新在前；每条以 `1、2、3、` 简述具体变化，末尾放一个“本次完整记录”链接定位对应章节，表后放“全部完整更新记录”入口。
+3. 日期统一为 `YYYY-MM-DD`。正式版本按实际发布的北京时间日期，文档按实际更新日期；早期日期沿用有据记录，未知时说明，不能用整理日期补造历史。区分已发布、未发布与本地历史。
+4. README 负责用途、下载、快速开始和简短摘要；USAGE 负责操作；CHANGELOG 保存完整变化与兼容说明；VALIDATION 保存验证证据和局限。RELEASE_NOTES 继续用于当前发行说明，保留其版本首行和发布校验约定。已有 Release 正文、标签和附件不随文档整理自动改写。
+5. 合并重复段落并用链接引用详细内容；保留必要步骤、默认值、兼容性、来源和验证边界。编号摘要写清具体结果，避免空泛的“优化体验”，也不把历史试用或跳过项写成当前正式包已全面验证。
+
+本次更新日志的表格与编号短摘要参考 [LinkSwift README](https://github.com/hmjz100/LinkSwift/blob/dev/README.md#更新日志)，在本仓库补充逐次详情链接、完整历史入口及统一日期；仅借鉴文档呈现方法，未复制其产品内容、代码或新增依赖。
 
 ## 后续升级流程
 

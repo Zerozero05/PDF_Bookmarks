@@ -1,152 +1,111 @@
 # PDF_Bookmarks
 
-为普通 PDF 添加多级书签，可独立使用。支持导入目录 JSON，也可从文字或扫描 PDF 生成目录，经预览与人工校对后写入，保持原 PDF 的文件名和路径不变。
+为普通 PDF 添加多级书签，可独立使用，也适配 Zotero 附件。支持导入目录 JSON，或从文字、扫描 PDF 识别目录，经预览与人工校对后写入，保持原 PDF 文件名和路径。
 
-同时适配 Zotero 附件：直接处理 Zotero 当前使用的 PDF 原文件，无需重新附加 PDF。具体操作见下方“在 Zotero 中使用”。
+当前正式版本：**v1.8.1**。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
 
-当前源码版本：**v1.8.1**，两个标签页共用标题栏“置顶 / 取消置顶”按钮，修复开启后无法再次点击取消的问题。既有稳定窗口、夜间模式、Enter确认/查找、本地草稿、撤销/重做、目录识别及安全写入继续可用。面向 Windows 10/11 x64，中文界面，兼容中文文件名和书签。下载以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases) 实际附件为准；[v1.8.0 历史发行版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.8.0)与更早版本保留。源码、版本历史和文档在本仓库管理，Windows 程序从 Releases 下载。
-
-[下载 v1.8.1 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.8.1) · [完整使用说明](docs/USAGE.md) · [版本记录](CHANGELOG.md) · [维护与清理流程](docs/MAINTENANCE.md) · [自动构建](https://github.com/Zerozero05/PDF_Bookmarks/actions/workflows/windows-build.yml)
-
-两个标签页间切换会保留未完成输入、撤销历史与预览；“保存 JSON 并返回”后回主界面自动预览，PDF 写入仍需原有确认。草稿独立保存在本机，与正式 JSON 分开，恢复前核对原 PDF 身份。v1.6.0 的单/双栏选择、三种节编号、滚轮/Ctrl＋滚轮缩放及安全写入继续保留。操作见 [校对与界面说明](docs/USAGE.md#v170校对与界面完善)，各阶段验证见 [验证记录](VALIDATION.md)。
-
-**v1.8.1 共用置顶**：两个页面共用标题栏最小化按钮左侧的“置顶 / 取消置顶”按钮，切页保持同一状态；按钮与主窗口同步置顶层级，可反复开启和取消。保留原生系统窗口操作及原有功能。使用方式与兼容范围见[共用置顶说明](docs/USAGE.md#共用置顶按钮v181)。
-
-**v1.8.0 界面与窗口**：两个标签页共用当前窗口大小、位置及最大化状态，切换不再伸缩或移位；共用最小尺寸1000×760，手动调整、关闭重开工作台及保存返回时也保持稳定。两个页面可切换并记住夜间模式，PDF页面图像保持原像素。拖宽时合并内部排版，停止变化约80毫秒后按最终尺寸重排；等待后仍有排版耗时，拖动中内容可能短暂保持旧尺寸，不承诺固定提速比例。
-
-本轮界面借鉴UI UX Pro Max、Anthropic frontend-design和微软Windows设计方法，具体采用、固定版本及检查范围见[界面设计说明](docs/UI_DESIGN.md)；未复制第三方实现或新增依赖。
-
-**v1.8.0 快捷校对**：目录列表按 Enter（含数字键盘 Enter）确认所选项，可配合 Ctrl / Shift 多选；从最后所选项之后跳到当前搜索/筛选范围的下一待核对项，末尾循环。所选项有未知/越界目标页或空标题时整批不确认。保留撤销、重做和草稿暂存，不自动导出或写PDF。搜索框两种 Enter 均执行查找；编辑框 Enter 继续只提交编辑。快捷操作复用既有机制，没有新增外部借鉴或依赖。
+[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.8.1) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
 
 ## 选择下载方式
 
 | 下载 | 运行方式与区别 |
 | --- | --- |
-| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64.exe) | 直接运行，携带方便；每次启动需要将运行库解包到临时目录 |
-| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip) | 解压后打开 `PDF_Bookmarks\PDF_Bookmarks.exe`；须保留同目录的 `_internal`、`package-manifest.json` 和其余文件，省去启动时的临时解包 |
-| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_cli.exe) | 命令行程序，适合脚本和批量处理；参数见 [使用说明](docs/USAGE.md) |
-| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_full.zip) | GUI/CLI 单文件 EXE、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
+| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
+| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
+| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
-两种 GUI 都面向 Windows 10/11 x64，无需安装 Python，功能和版本均为 v1.8.1。便携版主要减少启动解包，不承诺每页 OCR 或 PDF 写入更快。两者共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`，切换时继续沿用设置；“便携”指免安装，设置和本地草稿仍保存在当前电脑。
+两种 GUI 功能相同，无需安装 Python，共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json` 及本机草稿。便携版主要省去启动解包，不保证 OCR 或 PDF 写入更快；“便携”指免安装，设置与草稿仍保存在当前电脑。
 
-发布页下载文件统一采用 `PDF_Bookmarks_<版本>_<系统>_<架构>[_类型].<扩展名>`，各部分用下划线分隔。下载文件的校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/SHA256SUMS.txt)，便携 ZIP 另附 [同名 .zip.sha256 文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新使用，无需手动运行。
-
-历史 [v1.4.1 发行版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.4.1)及其文件保持不变，旧 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。v1.5.0 及后续包内采用 `PDF_Bookmarks.exe`，继续沿用原设置路径。
-
-## v1.7.0 校对与界面更新
-
-- **同一窗口两个标签页**：普通切换保留当前编辑、撤销历史和预览；关闭工作台后回主界面，顶部标签可重开。保存 JSON 成功后回主界面自动预览，识别、载入、保存与主界面处理任务互锁。
-- **本地未完成草稿**：约1200毫秒停顿后自动暂存，也可手动暂存/恢复；草稿保留未确认条目和未完成输入，PDF 路径、大小或修改时间不符时拒绝恢复。正式 JSON 仍须确认后导出。
-- **校对工具**：最多80步撤销/重做，标题查找、待确认/低可信/未知页码筛选、下一待核对和目录树；不改变原目录顺序、层级及页码。
-- **预览与人工辅助识别**：增加原目录行定位、适合宽度/整页、翻页和折叠映射；可逐页框选目录区域、设置栏线后重新识别，修复人工分栏时宽白边造成的漏行。
-- **资源释放**：合并过期渲染，关闭时释放预览图片、排队结果、历史和自有回调，修复快速关闭与取消读取后的界面生命周期问题；不承诺固定内存降幅。
-
-### 继续保留的目录识别与编号规范
-
-- **双栏目录**：按完整左栏、再完整右栏读取，减少同一行两栏标题/页码混在一起；按栏补充 OCR，章节上下文跨栏、跨页继续，栏位置不直接作为层级。
-- **手选布局**：识别前可选“自动”“单栏”“双栏”。自动判断不理想时，手选布局并重新识别；页码范围仍填写实际 PDF 页。
-- **节编号**：新自动目录按所选方式规范，默认 `1.1 基本概念`，可选每章独立的 `1. 基本概念` 或“保留识别编号”；修正已有节号重复补号。继续使用编号与标题间一个空格、去除数字前 `§` 的规则；切换保护手工标题，不改变层级和页码。
-- **预览交互**：目录工作台右侧支持滚轮上下滚动，新增“放大”“缩小”“100%”及 Ctrl＋滚轮缩放，范围50%–300%。
-- 保留 v1.5.1 的文字方向比较、短标题重读、书末独立条目和人工确认保护；JSON/CLI、原设置位置和 PDF 安全写入机制继续兼容。新选项只用于当前工作台，不新增持久设置。
-
-详细变化见 [版本记录](CHANGELOG.md)，验证范围与局限见 [验证记录](VALIDATION.md)。
-
-## 程序更新
-
-v1.5.0 的 Single 与 Portable GUI 增加“帮助 / 更新”：显示当前版本、发行类型、更新内容和下载大小。启动后最多每 24 小时后台检查一次，也可立即手动检查；下载后须由用户选择“安装并重新启动”，不强制退出正在处理 PDF 的程序。请先保存目录编辑、关闭目录工作台并等待写入、识别和预览任务完成。
-
-更新保持当前发行类型、实际 EXE 文件名和文件夹位置；改名、中文/空格路径、移动整个便携文件夹均支持。Portable 仅更新清单中受管理的程序文件，清除废弃运行库，保留用户 PDF、配置和未知文件。新版完成配置、PDF 核心和主窗口健康检查后才提交；失败时同步恢复旧程序与旧配置。
-
-**v1.4.1 没有更新器，第一次升级须手动下载 v1.8.1。** 关闭旧程序后从发行版页面下载：Single 运行新 EXE 即可；Portable 须完整解压新文件夹，保留 `_internal` 与 `package-manifest.json`。两者设置仍在 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`，无需重新设置。源码运行和 CLI 不执行 GUI 自身更新。
-
-机制与故障处理见 [自动更新说明](docs/AUTO_UPDATE.md)，逐项验证记录见 [更新验收矩阵](docs/UPDATE_ACCEPTANCE.md)。
+下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
 
 ## 快速使用
 
-1. 按上表选择单文件 GUI 或便携文件夹版；需要 CLI、源码与说明时下载完整 Windows ZIP。便携版解压后运行，不能只复制其中的 EXE。
-2. 找到要处理的 PDF 原文件，关闭占用该文件的阅读窗口。
-3. 把原 PDF 和对应的 `书名.toc.json` 拖进程序。没有 JSON 时，点“生成 / 编辑目录…”，选择目录页范围、目录布局与节编号，再识别、校对并保存；默认使用自动布局和章.节编号。
-4. 点“1. 预览”，检查书签层级、标题和右侧实际目标页。勾选要处理的 PDF，设置写入选项，点“2. 写入勾选的 PDF”。更改输入或写入选项后须重新预览。
-5. 用 PDF 阅读器重新打开原文件，查看新增书签。
+1. 下载并运行单文件 GUI，或完整解压便携版；找到 PDF 原文件，关闭占用它的阅读窗口。
+2. 拖入 PDF 和对应的 `书名.toc.json`。没有 JSON 时，点“生成 / 编辑目录…”，选择实际目录页范围、布局和节编号，识别后逐项校对并保存。
+3. 点“1. 预览”，检查层级、标题与实际目标页；勾选要处理的 PDF，设置写入选项。
+4. 点“2. 写入勾选的 PDF”。更改输入或写入选项后须重新预览；完成后重新打开原文件检查书签。
 
-程序添加 PDF 内部的 Outline / Bookmarks，不插入正文目录页。多本文件按文件名配对，详细配对、恢复与刷新说明见 [使用说明](docs/USAGE.md)。
+程序添加 PDF 内部书签，不插入正文目录页。多本文件按文件名配对，详细规则与恢复方法见[完整使用说明](docs/USAGE.md)。
 
 ### 在 Zotero 中使用
 
-在 Zotero 中右键 PDF 附件，选择“显示文件”，找到实际原文件并关闭该 PDF 的阅读窗口，再按上述步骤处理。完成后回到 Zotero，重新打开同一个附件即可查看书签，无需重新附加 PDF。存储附件可递归处理 `storage`，链接附件可直接处理实际链接指向的文件。
+右键 PDF 附件选择“显示文件”，找到原文件并关闭该 PDF 的阅读窗口，再按上述步骤处理。完成后在 Zotero 重新打开同一个附件，无需重新附加；存储附件可处理 `storage`，链接附件使用其实际文件路径。
 
-使用可选的茉莉花缓存清理时，处理前须完全退出 Zotero，处理后再启动。该选项默认关闭，与删除输入目录 JSON 是两个独立选项。
+如启用茉莉花缓存清理，处理前须完全退出 Zotero，完成后再启动；它与删除输入 JSON 是两个独立选项，默认均关闭。
+
+<a name="v170-校对与界面更新"></a>
+<a name="继续保留的目录识别与编号规范"></a>
 
 ## 功能与默认设置
 
-| 功能 | 行为 |
+| 功能 | 使用方式与保护 |
 | --- | --- |
-| 目录生成与编辑 | 文字提取、本地中英文 OCR；自动/单栏/双栏、逐页区域/栏线、三种节编号、人工确认与批量改层级 |
-| 校对与草稿 | Enter多选确认及下一待核对、Enter查找、筛选/目录树、最多80步撤销/重做、本机未完成草稿与身份核验恢复 |
-| 目标页预览 | 滚轮、按钮及 Ctrl＋滚轮缩放50%–300%，适合宽度/整页、翻页与原目录行定位，只读核对 |
-| 页码映射 | 固定偏移、分段映射、单项实际 PDF 页；支持章、节、小节多级书签 |
-| 拖放与批量 | 拖入 PDF、JSON 或文件夹；逐本预览、勾选和显示处理结果 |
-| 原地写入 | 临时副本写入、校验后原子替换；原 PDF 文件名和路径保持不变 |
-| 备份 | 默认开启；留空用各 PDF 旁的 `_backup`，可选择自定义文件夹 |
-| 已有书签 | 默认跳过；明确选择替换时覆盖当前整棵书签树 |
-| 茉莉花缓存清理 | 默认关闭；成功写入后只清理 PDF 同目录 `jasminum-outline.json` |
-| 删除输入目录 JSON | 默认关闭；成功写入后删除本次使用的 JSON，失败/跳过/预览时保留 |
-| 便捷设置 | 同窗两标签共用稳定窗口，保留当前状态与统一置顶选择；可记忆夜间模式，处理任务互锁 |
-| 命令行 | 保留预览、dry-run、单本和批量处理模式 |
+| 目录识别与编辑 | 文字提取、本地中英文 OCR；自动/单栏/双栏布局、逐页区域与栏线、三种节编号、人工确认及批量改层级 |
+| 校对与草稿 | Enter 单/多选确认并转到下一待核对项，查找、筛选、目录树、最多 80 步撤销/重做；本地草稿恢复前核对 PDF 身份，草稿与正式 JSON 分开 |
+| 目标页预览 | 滚轮、按钮及 Ctrl＋滚轮缩放 50%–300%，适合宽度/整页、翻页与原目录行定位；预览只读 |
+| 页码映射 | 固定偏移、分段映射或指定实际 PDF 页，支持多级书签 |
+| 拖放与批量 | 拖入 PDF、JSON 或文件夹，逐本预览、勾选和查看处理结果 |
+| 窗口与主题 | 同窗两标签页共用窗口状态与标题栏置顶按钮，可记忆夜间模式；PDF 页面图像保持原像素 |
+| 原地写入 | 临时副本写入并校验后原子替换，保持原文件名与路径 |
+| 备份 | 默认开启；默认保存在各 PDF 旁的 `_backup`，可自选目录 |
+| 已有书签 | 默认跳过；明确选择替换时覆盖整棵原书签树 |
+| 茉莉花缓存清理 | 默认关闭；成功写入后只清理同目录 `jasminum-outline.json` |
+| 删除输入 JSON | 默认关闭；仅在相关 PDF 全部成功写入且 JSON 未变化后删除，预览/失败/跳过时保留 |
+| 命令行 | 支持预览、dry-run、单本及批量处理 |
 
-自动识别结果需要核对，可信提示不是准确率保证。复杂版式、模糊扫描、罗马页码和缺页可能需要手工校正；目标页不确定时不会直接写入。OCR 在本机运行，不上传 PDF，不需要 API Key。打包版包含模型；首次从源码安装依赖需要联网。
+自动识别结果仍需人工核对；复杂版式、模糊扫描、罗马页码或缺页可能需要手工修正。目标页未知/越界或标题无效时拒绝确认/写入；Enter 确认和草稿暂存都不会自动导出正式 JSON 或写入 PDF。操作细节见[校对说明](docs/USAGE.md#v170校对与界面完善)。
+
+## 更新日志
+
+按时间倒序列出全部已有更新；每条末尾可查看本次完整记录。
+
+| 版本／记录 | 日期 | 主要变更 |
+| --- | --- | --- |
+| 文档更新 | 2026-10-20 | 1、合并重复介绍，整理下载、使用和文档入口。<br>2、补齐全部更新摘要、编号及详情链接；程序仍为 v1.8.1。<br>[本次完整记录](CHANGELOG.md#docs-2026-10-20) |
+| v1.8.1 | 2026-10-19 | 1、两页共用标题栏置顶按钮，切页保持状态。<br>2、修复开启置顶后无法再次点击取消的问题。<br>[本次完整记录](CHANGELOG.md#v1-8-1) |
+| v1.8.0 | 2026-10-18 | 1、修复切页时窗口伸缩、移位，改善拖宽响应。<br>2、整理界面，新增可记忆的夜间模式。<br>3、支持 Enter 多选确认、下一待核对及快速查找。<br>[本次完整记录](CHANGELOG.md#v1-8-0) |
+| v1.7.0 | 2026-10-18 | 1、主界面与目录工作台整合为同窗标签页。<br>2、新增本地草稿、撤销重做、查找筛选及目录树。<br>3、增加预览定位、逐页识别区域和人工栏线。<br>[本次完整记录](CHANGELOG.md#v1-7-0) |
+| v1.6.0 | 2026-10-17 | 1、增强双栏识别，支持手选单栏/双栏布局。<br>2、提供三种节编号方式，修正重复补号。<br>3、预览支持滚轮、按钮及 Ctrl＋滚轮缩放。<br>[本次完整记录](CHANGELOG.md#v1-6-0) |
+| v1.5.1 | 2026-10-11 | 1、减少扫描目录漏项，增强短标题识别。<br>2、规范编号空格、去除数字节号前 § 并补充缺失节号。<br>3、修正索引、答案等独立书末条目的层级。<br>[本次完整记录](CHANGELOG.md#v1-5-1) |
+| v1.5.0 | 2026-10-08 | 1、新增“帮助 / 更新”、后台检查及下载进度。<br>2、安装前校验，新版异常时回滚程序与配置。<br>3、统一 Single/Portable 打包及更新清单。<br>[本次完整记录](CHANGELOG.md#v1-5-0) |
+| 仓库整理 | 2026-10-06 | 1、统一仓库名称、下载命名及使用说明。<br>2、整理源码、测试、许可、便携打包及自动构建。<br>[本次完整记录](CHANGELOG.md#repository-organization) |
+| v1.4.1 | 2026-10-04 | 1、新增成功写入后删除目录 JSON 的可选设置。<br>2、批量任务全部成功后才删除共用 JSON。<br>[本次完整记录](CHANGELOG.md#v1-4-1) |
+| v1.4（本地历史） | 2026-10-04 | 1、修复选择操作覆盖确认状态，完善单元格编辑。<br>2、增强层级调整，记住保存位置与工作台设置。<br>[本次完整记录](CHANGELOG.md#v1-4) |
+| v1.3.1（本地历史） | 2026-10-04 | 1、生成与编辑合并为目录工作台。<br>2、支持拖入 PDF/JSON，切换时保留修改。<br>[本次完整记录](CHANGELOG.md#v1-3-1) |
+| v1.3（本地历史） | 2026-10-04 | 1、新增文字/离线 OCR 识别与页码映射建议。<br>2、增加目录编辑、目标页核对和安全 JSON 导出。<br>[本次完整记录](CHANGELOG.md#v1-3) |
+| v1.2.1（本地历史） | 2026-10-04 | 1、修复滚动控件被遮挡、内容无法显示或点击的问题。<br>[本次完整记录](CHANGELOG.md#v1-2-1) |
+| v1.2（本地历史） | 2026-10-04 | 1、记住设置，支持拖放、批量勾选及置顶。<br>2、增加树状目录和目标页预览。<br>[本次完整记录](CHANGELOG.md#v1-2) |
+| v1.1（本地历史） | 2026-10-04 | 1、新增可选备份及自定义备份目录。<br>2、支持成功写入后清理茉莉花大纲缓存。<br>[本次完整记录](CHANGELOG.md#v1-1) |
+| 基础版本（本地历史） | 2026-10-03 | 1、根据 JSON 添加多级书签，支持偏移及分段映射。<br>2、提供 GUI/CLI、预览批量、备份及校验后原地写入。<br>[本次完整记录](CHANGELOG.md#initial-version) |
+
+[查看全部完整更新记录](CHANGELOG.md)。标为“本地历史”的条目没有对应 GitHub 发行版；仓库整理属于文档/打包阶段，非新程序版本，详细日期范围见对应记录。
+
+## 程序更新
+
+v1.5.0 及以后 Single/Portable GUI 可从“帮助 / 更新”检查正式版，最多每 24 小时后台检查一次；下载并校验后，由用户选择“安装并重新启动”。安装前先保存目录、关闭工作台内容并等待处理任务结束。
+
+更新保留发行类型、实际 EXE 名称与位置、设置和用户数据；新版健康检查失败时恢复旧程序与配置。v1.4.1 首次升级、CLI 及源码运行须从发行页手动更新；便携版须完整解压，不能只复制 EXE。机制与故障处理见[自动更新说明](docs/AUTO_UPDATE.md)。
 
 ## 源码运行与打包
 
-推荐 Windows x64、Python 3.12，保留 pip 和 Tcl/Tk。在仓库根目录运行：
+源码推荐 Windows x64、Python 3.12，并保留 pip 与 Tcl/Tk；打包版已包含 OCR 模型，从源码安装依赖需要联网。运行可使用 `setup.cmd`、`launch_gui.cmd` 或 `launch_cli.cmd`，打包入口为 `build_exe.cmd`。
 
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe gui_entry.py
-```
+[安装与运行](docs/USAGE.md#从源码安装与运行) · [打包与验证](docs/USAGE.md#打包与验证) · [项目文件](docs/USAGE.md#项目文件) · [维护与发布流程](docs/MAINTENANCE.md) · [自动构建](https://github.com/Zerozero05/PDF_Bookmarks/actions/workflows/windows-build.yml)
 
-也可以双击 `setup.cmd` 安装，再用 `launch_gui.cmd` 或 `launch_cli.cmd` 启动。Windows 本地打包使用 `build_exe.cmd`，生成 `dist\PDF_Bookmarks.exe`、`dist\PDF_Bookmarks_CLI.exe` 和 `dist\portable\PDF_Bookmarks\PDF_Bookmarks.exe` 及其完整运行文件夹；外部更新器由构建脚本先构建并嵌入两种 GUI。
+## 文档与来源
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
+| 文档 | 内容 |
+| --- | --- |
+| [完整使用说明](docs/USAGE.md) | 目录识别、校对、草稿、CLI、Zotero、备份和恢复 |
+| [验证记录](VALIDATION.md) | 各阶段实际验证、环境、跳过项与尚未覆盖的场景 |
+| [更新验收矩阵](docs/UPDATE_ACCEPTANCE.md) | Single/Portable 更新、健康检查及失败回滚 |
+| [当前发行说明](docs/RELEASE_NOTES.md) | 当前版本变化、下载附件、升级与验证局限 |
+| [界面设计说明](docs/UI_DESIGN.md) | 界面与窗口交互的借鉴来源、采用内容及验证范围 |
+| [文档维护约定](docs/MAINTENANCE.md#更新日志与文档维护) | 更新日志格式、文件分工及本次格式参考 |
 
-本轮共用置顶修复源码回归517项：516通过、1项跨盘环境测试跳过、0失败；修正后试用EXE的146项实际PYZ模块检查、28项运行源码指纹及身份/资源/helper核验通过。真实试用EXE完成4次鼠标点击、两轮开启/取消，涵盖两页、明暗和最小化恢复，正常退出并保存设置。试用仍为1.8.0身份且不同于旧正式包；包内模块检查使用宿主Python/Tk，实际鼠标为空白隔离界面。正式1.8.1身份、冻结更新/回滚及七附件以本次 [Actions](https://github.com/Zerozero05/PDF_Bookmarks/actions/workflows/windows-build.yml)、[验证记录](VALIDATION.md)与[发行说明](docs/RELEASE_NOTES.md)为准。跨显示器DPI、贴边/最大化手势和真实PDF业务未在本轮鼠标阶段逐项覆盖；既有识别样例结果不作为所有文档或环境无缺陷的保证。
-
-固定依赖在 `requirements.txt` 和 `requirements-build.txt`。v1.5.0 本机完整回归 303 项通过，真实冻结 Single/Portable 的成功升级和失败回滚共四个场景通过；[云端验证](https://github.com/Zerozero05/PDF_Bookmarks/actions/runs/37604195474)通过，其中一项跨盘测试因单盘环境跳过，本机已实际通过。详细结果与边界见 [UPDATE_ACCEPTANCE.md](docs/UPDATE_ACCEPTANCE.md)。原 v1.4.1 的历史验证保留在 [VALIDATION.md](VALIDATION.md)。
-
-## 项目结构与版本发布
-
-```text
-bookmarks_core.py        PDF 校验、页码映射与原地写入
-bookmarks_gui.py         主窗口与批量处理
-gui_support.py          设置、配对和页面渲染
-toc_generation.py        文字/OCR 识别与目录 JSON
-toc_editor.py            目录工作台
-editor_session.py        本地未完成草稿与有界撤销/重做
-ui_theme.py              程序内浅色/夜间主题与控件配色
-gui_entry.py             GUI 入口
-bookmarks.py             CLI 入口
-build_info.py            构建身份、协议与配置 schema
-config_manager.py        原设置兼容、原子保存与逐级迁移
-updater/                 检查、下载、清单、事务、回滚与清理
-update_dialog.py          主窗口的帮助与更新入口
-updater_entry.py          外部更新器入口
-tests/  examples/        回归测试与示例目录
-docs/                   使用说明与维护流程
-licenses/               第三方许可
-.github/workflows/      Windows 测试、打包与发布
-VERSION                 当前发布版本
-```
-
-普通提交、PR 和手工运行生成试用构建产物。新版本先供用户本地试用，确认后再推送与 `VERSION` 一致的版本标签并发布 Release。EXE、完整 ZIP 与便携 ZIP 放在 Releases，源码仓库不保存二进制、虚拟环境、用户 PDF 或私人目录 JSON。
-
-云端管理和打包可以减少本地开发文件的磁盘占用；下载的 EXE 仍占本机磁盘，运行时仍需本机内存。只有收到本次清理要求才执行清理；已同时要求“发布后清理”时，远端核验通过后按展示的固定路径清单执行，无需逐项重复确认。默认保留 Git 工作副本、用户 PDF/设置、共享依赖及唯一资料。流程见 [MAINTENANCE.md](docs/MAINTENANCE.md)。
+双栏识别参考 [PyMuPDF 文字提取说明](https://pymupdf.readthedocs.io/en/latest/recipes-text.html)、[官方多栏示例](https://github.com/pymupdf/PyMuPDF-Utilities/blob/master/text-extraction/multi_column.py)的坐标分区思路，以及 [Docling SDK 说明](https://github.com/docling-project/docling/blob/main/docling/.agents/skills/docling/references/python-sdk.md)对阅读顺序与层级的区分。实现沿用本项目解析、OCR 与校验接口，未复制示例代码或引入 Docling、新模型及新依赖。
 
 ## 许可
 
-双栏识别的方法参考 [PyMuPDF 官方文字提取说明](https://pymupdf.readthedocs.io/en/latest/recipes-text.html)与[官方多栏示例](https://github.com/pymupdf/PyMuPDF-Utilities/blob/master/text-extraction/multi_column.py)的坐标分区思路，并参考 [Docling SDK 说明](https://github.com/docling-project/docling/blob/main/docling/.agents/skills/docling/references/python-sdk.md)将布局阅读顺序和目录层级分别处理。实现根据本项目既有解析、OCR与校验接口独立编写，没有复制这些示例代码，也未引入Docling框架、新模型或新依赖。
-
-本项目沿用 **GNU AGPL v3**，完整条款见 [LICENSE.txt](LICENSE.txt)。PyMuPDF/MuPDF 与 OCR、运行库等依赖的许可和来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [licenses](licenses)。
+本项目沿用 **GNU AGPL v3**，见 [LICENSE.txt](LICENSE.txt)。PyMuPDF/MuPDF、OCR 与运行库的来源及许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [licenses](licenses)。
