@@ -69,7 +69,8 @@ def valid_target(entry, page_count):
 class TocEditor:
     def __init__(self, parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                  editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
-                 on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None):
+                 on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None,
+                 topmost_var=None):
         self.parent, self.executor, self.on_saved = parent, executor, on_saved
         self.editor_settings = dict(editor_settings or {})
         self.on_settings_changed = on_settings_changed
@@ -84,7 +85,9 @@ class TocEditor:
             self.window.title("目录工作台：生成与编辑 JSON")
             self.window.geometry(self.editor_settings.get("editor_geometry", "1240x900"))
             self.window.minsize(1000, 720)
-        self.topmost = tk.BooleanVar(value=self.editor_settings.get("editor_topmost", bool(parent.attributes("-topmost"))))
+        self._shared_topmost = topmost_var is not None
+        self.topmost = topmost_var if self._shared_topmost else tk.BooleanVar(
+            value=self.editor_settings.get("editor_topmost", bool(parent.attributes("-topmost"))))
         if not self.embedded:
             self.window.attributes("-topmost", self.topmost.get())
             self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -185,7 +188,8 @@ class TocEditor:
         source.pack(fill="x")
         source.columnconfigure(1, weight=1)
         self._path_row(source, 0, "PDF", self.pdf, self._choose_pdf)
-        ttk.Checkbutton(source, text="置顶", variable=self.topmost, command=self._set_topmost).grid(row=0, column=3, padx=(8, 0))
+        if not self._shared_topmost:
+            ttk.Checkbutton(source, text="置顶", variable=self.topmost, command=self._set_topmost).grid(row=0, column=3, padx=(8, 0))
         if self.theme_var is not None:
             ttk.Checkbutton(source, text="夜间模式", variable=self.theme_var, onvalue="dark", offvalue="light",
                             command=self.on_theme_changed).grid(row=0, column=4, padx=(8, 0))
@@ -1791,7 +1795,9 @@ class TocEditor:
 
 def open_editor(parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                 editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
-                on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None):
+                on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None,
+                topmost_var=None):
     """Open an editor sharing the main window's serialized PDF worker."""
     return TocEditor(parent, executor, pdf_path, toc_path, on_saved, mode, editor_settings,
-                     on_settings_changed, draft_dir, host, on_closed, task_guard, theme_var, on_theme_changed)
+                     on_settings_changed, draft_dir, host, on_closed, task_guard, theme_var, on_theme_changed,
+                     topmost_var)

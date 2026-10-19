@@ -141,7 +141,8 @@ class WorkspaceTabTests(unittest.TestCase):
                          {str(self.main.main_page), str(self.main.editor_page)})
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.main_page))
         self.assertIsNone(self.main.editor)
-        self.assertFalse(any(isinstance(child, tk.Toplevel) for child in self.root.winfo_children()))
+        self.assertEqual([child for child in self.root.winfo_children() if isinstance(child, tk.Toplevel)],
+                         [self.main.titlebar_pin.popup] if self.main.titlebar_pin.popup is not None else [])
 
     def test_open_editor_embeds_a_frame_and_keeps_the_shared_worker(self):
         editor = self.editor()
@@ -150,7 +151,8 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertIs(editor.executor, self.main.executor)
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.editor_page))
         self.assertTrue(str(editor.window).startswith(str(self.main.editor_page) + "."))
-        self.assertFalse(any(isinstance(child, tk.Toplevel) for child in self.root.winfo_children()))
+        self.assertEqual([child for child in self.root.winfo_children() if isinstance(child, tk.Toplevel)],
+                         [self.main.titlebar_pin.popup] if self.main.titlebar_pin.popup is not None else [])
         self.assertEqual(editor.store.path_for(self.pdf).parent, self.settings.parent / "editor_drafts")
 
     def test_selecting_editor_tab_lazily_creates_the_editor(self):
@@ -500,7 +502,7 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertEqual(other.read_bytes(), self.pdf.read_bytes())
         self.assertEqual(json.loads(target.read_text(encoding="utf8"))["bookmarks"][0]["title"], "第一章 基础")
 
-    def test_shared_window_geometry_and_separate_topmost_preferences_survive_close_and_reopen(self):
+    def test_shared_window_geometry_and_topmost_preference_survive_close_and_reopen(self):
         # Keep requested sizes independent of the CI desktop's default cap.
         self.root.maxsize(2000, 1400)
         self.root.geometry("1040x780+80+60")
@@ -511,13 +513,14 @@ class WorkspaceTabTests(unittest.TestCase):
         legacy_editor_geometry = self.main.editor_settings["editor_geometry"]
         self.assert_window_stays(self.main._open_editor)
         editor = self.main.editor
+        self.assertIs(editor.topmost, self.main.topmost)
         self.root.geometry("1360x980+160+120")
         editor.topmost.set(True)
         editor._set_topmost()
         self.root.update()
         self.assertTrue(self.root.attributes("-topmost"))
         self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
-        self.assertFalse(self.root.attributes("-topmost"))
+        self.assertTrue(self.root.attributes("-topmost"))
         self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
         self.assertTrue(self.root.attributes("-topmost"))
         self.main._close()
@@ -525,7 +528,7 @@ class WorkspaceTabTests(unittest.TestCase):
         saved = gui_support.load_settings(self.settings)
         self.assertEqual(saved["geometry"].split("+", 1)[0], "1360x980")
         self.assertEqual(saved["editor_geometry"], legacy_editor_geometry)
-        self.assertFalse(saved["topmost"])
+        self.assertTrue(saved["topmost"])
         self.assertTrue(saved["editor_topmost"])
         self.root = TkinterDnD.Tk()
         self.root.maxsize(2000, 1400)
@@ -535,10 +538,56 @@ class WorkspaceTabTests(unittest.TestCase):
         self.root.deiconify()
         self.root.update()
         self.assertEqual(self.root.geometry().split("+", 1)[0], "1360x980")
-        self.assertFalse(self.root.attributes("-topmost"))
+        self.assertTrue(self.root.attributes("-topmost"))
         self.assert_window_stays(self.main._open_editor)
         self.assertTrue(self.root.attributes("-topmost"))
         self.assertEqual(self.root.minsize(), (1000, 760))
+
+    def test_topmost_change_from_either_page_keeps_one_shared_state_and_unfinished_work(self):
+        self.root.deiconify()
+        editor = self.editor()
+        model = self.load_sample(editor)
+        original, photo = deepcopy(asdict(model)), editor._photo
+        editor.title.set("尚未提交的标题")
+        editor._cancel_edit_timer()
+        for page, enabled in ((self.main.main_page, True), (self.main.editor_page, False),
+                              (self.main.editor_page, True), (self.main.main_page, False)):
+            self.main.workspace_tabs.select(page)
+            self.root.update()
+            self.main.topmost.set(enabled)
+            self.root.update()
+            self.assertEqual(editor.topmost.get(), enabled)
+            self.assertEqual(bool(self.root.attributes("-topmost")), enabled)
+            self.assertEqual(asdict(model), original)
+            self.assertIs(editor._photo, photo)
+            self.assertEqual(editor.title.get(), "尚未提交的标题")
+        self.assertFalse(self.errors)
+
+    def test_old_editor_topmost_does_not_override_the_shared_main_preference(self):
+        self.main.editor_settings["editor_topmost"] = True
+        self.main.topmost.set(False)
+        self.root.deiconify()
+        self.editor()
+        self.assertFalse(self.main.editor.topmost.get())
+        self.assertFalse(self.root.attributes("-topmost"))
+
+    def test_both_pages_use_only_the_single_window_pin_button(self):
+        self.root.deiconify()
+        self.editor()
+
+        def pin_buttons(widget):
+            found = []
+            for child in widget.winfo_children():
+                if isinstance(child, (ttk.Button, ttk.Checkbutton)) and child.cget("text") in ("置顶", "取消置顶"):
+                    found.append(child)
+                found.extend(pin_buttons(child))
+            return found
+
+        for page in (self.main.main_page, self.main.editor_page):
+            self.main.workspace_tabs.select(page)
+            self.root.update()
+            self.assertEqual(pin_buttons(self.root), [self.main.titlebar_pin.button])
+            self.assertTrue(self.main.titlebar_pin.button.winfo_ismapped())
 
     def test_hidden_editor_preferences_preserve_shared_geometry_and_legacy_standalone_geometry(self):
         self.root.maxsize(2000, 1400)

@@ -15,6 +15,7 @@ from bookmarks_core import discover_pairs, inspect_pdf, write_plan
 from gui_support import (delete_written_toc, dropped_pairs, load_settings, render_page,
                          save_settings, settings_path, toc_file_signature)
 from ui_theme import apply_theme, refresh_theme_widgets
+from window_controls import TitlebarPin
 
 
 class BookmarkWindow:
@@ -58,6 +59,7 @@ class BookmarkWindow:
         self.file_detail = tk.StringVar(value="选择一本查看书签；勾选决定是否写入。")
         self.page_status = tk.StringVar(value="点击书签查看目标页面（只读）")
         self._build()
+        self.titlebar_pin = TitlebarPin(root, self.topmost)
         refresh_theme_widgets(root)
         self._apply_topmost()
         self._register_drop()
@@ -87,7 +89,6 @@ class BookmarkWindow:
         header.pack(fill="x", pady=(0, 8))
         ttk.Label(header, text="PDF_Bookmarks", font=("Microsoft YaHei", 14, "bold"),
                   style="Title.TLabel").pack(side="left")
-        ttk.Checkbutton(header, text="置顶", variable=self.topmost).pack(side="right")
         ttk.Checkbutton(header, text="夜间模式", variable=self.theme, onvalue="dark", offvalue="light",
                         command=self._set_theme).pack(side="right", padx=8)
         self.update_button = ttk.Button(header, text="帮助 / 更新", command=self._show_updates)
@@ -274,8 +275,8 @@ class BookmarkWindow:
             widget.configure(state="disabled" if self.busy or not self.backup.get() else "normal")
 
     def _apply_topmost(self, *_):
-        if self._active_workspace == str(self.main_page):
-            self.root.attributes("-topmost", self.topmost.get())
+        self.root.attributes("-topmost", self.topmost.get())
+        self.editor_settings["editor_topmost"] = self.topmost.get()
 
     def _workspace_changed(self, _event=None):
         if self.closed:
@@ -294,10 +295,6 @@ class BookmarkWindow:
             if self.editor is not None and not self.editor.closed:
                 self.editor._persist_settings()
         self._active_workspace = selected
-        if selected == str(self.editor_page):
-            self.root.attributes("-topmost", self.editor.topmost.get())
-        else:
-            self._apply_topmost()
         self.root.update_idletasks()
 
     def _editor_closed(self):
@@ -369,7 +366,7 @@ class BookmarkWindow:
                                   draft_dir=settings_path(self.settings_path).parent / "editor_drafts",
                                   host=self.editor_page, on_closed=self._editor_closed,
                                   task_guard=self._editor_task_blocked, theme_var=self.theme,
-                                  on_theme_changed=self._set_theme)
+                                  on_theme_changed=self._set_theme, topmost_var=self.topmost)
         if self.editor is not None:
             self.workspace_tabs.select(self.editor_page)
 
@@ -892,6 +889,7 @@ class BookmarkWindow:
         for variable, callback in self._variable_traces:
             variable.trace_remove("write", callback)
         self._variable_traces.clear()
+        self.titlebar_pin.close()
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.root.destroy()
 

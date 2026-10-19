@@ -1,6 +1,6 @@
 # 界面设计与兼容约定
 
-更新日期：2026-10-18。本页记录v1.8.0的界面改进；v1.7.0及更早历史标签和附件保持原内容。发布是否完成及验证范围以发行页、Actions和验证记录为准。
+更新日期：2026-10-19。本页记录v1.8.0界面改进及v1.8.1共用置顶；既有历史标签和附件保持原内容。发布是否完成及验证范围以发行页、Actions和验证记录为准。
 
 ## 设计方向
 
@@ -31,3 +31,19 @@ skills.sh排行榜只作为发现入口，动态排名不是适用性或安全�
 ## 交付检查
 
 必要检查包括：浅色和深色的主要文字、提示、待核对与选中项对比度；已打开和后创建的下拉菜单；最小1000×760共享窗口和原独立工作台1000×720的控件可见性；切页/缩放/拖动与关闭；草稿、预览、识别、JSON/CLI、更新与PDF写入回归。实际通过、失败、跳过与未验证范围以[验证记录](../VALIDATION.md)为准，不能用设计清单代替执行结果。
+
+## 共用置顶的增量设计（v1.8.1，2026-10-19）
+
+只将两个内容区置顶开关合并到窗口级入口。两个标签使用同一BooleanVar，启动以旧主窗口topmost为准；保留旧配置字段和独立工作台默认接口，不改变其他默认选项及业务处理。
+
+保留系统标题栏，不接管系统边框或窗口过程。使用现有Tk/ttk和Python标准库ctypes，让一个无独立任务栏/Alt+Tab入口、不激活的附属按钮依照系统报告的最小化按钮位置显示在其左侧。坐标来自当前窗口而非固定屏幕偏移；支持程序化移动、缩放、最大化和恢复检查，未验证的跨显示器DPI条件另行注明。主窗口被模态窗口禁用时拒绝置顶，关闭时释放自有回调。只有初始化不可用时才采用标签栏右侧单一入口，不复制到两个页面。
+
+本次新增参考如下，仅核对接口和框架行为，没有复制第三方实现、安装技能或新增依赖；此前设计来源继续适用。
+
+用户试用进一步暴露了置顶后的命中缺陷：Tk将主窗口置顶后，原生附属按钮仍在非置顶组，按钮被主窗口遮住，button.invoke检查无法发现。修正时显式用SetWindowPos同步按钮的TOPMOST/NOTOPMOST，保持不激活/不移动/不改尺寸；同一轮变量回调和激活处理结束后再合并同步，避免owner后执行的排列再次覆盖按钮，主窗口重新获得焦点时也同步。关闭取消待执行同步。按钮显示“置顶 / 取消置顶”。补验原生置顶组和按钮中心WindowFromPoint命中，并另行验证真实鼠标反复点击。本次修复沿用以下既有接口与来源，没有新增外部借鉴或依赖。
+
+| 来源 | 实际采用内容 |
+| --- | --- |
+| Microsoft：[WM_GETTITLEBARINFOEX](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-gettitlebarinfoex)、[TITLEBARINFOEX](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-titlebarinfoex) | 分配正确结构，读取最小化按钮的屏幕坐标，保留原生系统按钮。 |
+| Microsoft：[窗口归属](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#owned-windows)、[扩展样式](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles)、[SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) | 附属窗口跟随主窗口、TOOLWINDOW/NOACTIVATE、移动时不改变激活和排列层次。 |
+| [Tk 8.6.12 Windows窗口管理源码](https://github.com/tcltk/tk/blob/core-8-6-12/win/tkWinWm.c) | 只核对UpdateWrapper/TkpWmSetState相关行为：隐藏窗口首次映射才创建原生外层，override-redirect配合transient会成为裁剪子窗口。自有实现以不可见初始化取得真实外层并设置原生owner，不改Tk或复制其代码。 |
