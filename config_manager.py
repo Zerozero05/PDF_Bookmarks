@@ -37,10 +37,24 @@ DEFAULT_CONFIG = {
     "editor_geometry": "1240x900",
     "editor_topmost": False,
     "editor_confirm_multi_delete": True,
+    "focus_mode": False,
+    "main_focus_mode": False,
+    "editor_focus_mode": False,
+    "main_pane_ratio": 0,
+    "main_preview_ratio": 0,
+    "editor_pane_ratio": 0,
+    "file_column_widths": {},
+    "bookmark_column_widths": {},
+    "editor_column_widths": {},
     "toc_save_mode": "source",
     "toc_save_dir": "",
     "auto_check_update": True,
     "last_update_check": 0.0,
+}
+_COLUMN_NAMES = {
+    "file_column_widths": {"checked", "name", "state"},
+    "bookmark_column_widths": {"#0", "printed", "pdf"},
+    "editor_column_widths": {"#0", "level", "title", "printed", "pdf", "confidence", "confirmed"},
 }
 
 
@@ -74,7 +88,7 @@ def _valid_timestamp(value) -> bool:
 
 def sanitize_settings(settings) -> dict:
     """Keep the original whitelist, defaults and legacy editor inheritance."""
-    result = DEFAULT_CONFIG.copy()
+    result = copy.deepcopy(DEFAULT_CONFIG)
     if not isinstance(settings, dict):
         return result
     for name, default in DEFAULT_CONFIG.items():
@@ -84,6 +98,17 @@ def sanitize_settings(settings) -> dict:
                 result[name] = value
             continue
         if type(value) is not type(default):
+            continue
+        if name in {"main_pane_ratio", "main_preview_ratio", "editor_pane_ratio"}:
+            if value == 0 or 10 <= value <= 90:
+                result[name] = value
+            continue
+        if name in _COLUMN_NAMES:
+            result[name] = {
+                column: width for column, width in value.items()
+                if isinstance(column, str) and column in _COLUMN_NAMES[name]
+                and type(width) is int and 30 <= width <= 3000
+            }
             continue
         if name == "existing" and value not in {"skip", "replace"}:
             continue
@@ -98,6 +123,12 @@ def sanitize_settings(settings) -> dict:
         result[name] = value
     if "editor_topmost" not in settings:
         result["editor_topmost"] = result["topmost"]
+    # One application preference replaces the former per-page switches. Keep
+    # legacy keys readable for older versions without changing config schema.
+    for name in ("focus_mode", "main_focus_mode", "editor_focus_mode"):
+        if type(settings.get(name)) is bool:
+            result["focus_mode"] = settings[name]
+            break
     return result
 
 
@@ -152,7 +183,7 @@ def read_config(path=None, *, strict=True) -> dict:
     except (OSError, ValueError, TypeError, RecursionError):
         if strict:
             raise
-        return dict(DEFAULT_CONFIG, schema=CONFIG_SCHEMA)
+        return dict(copy.deepcopy(DEFAULT_CONFIG), schema=CONFIG_SCHEMA)
 
 
 def load_config(path=None) -> dict:

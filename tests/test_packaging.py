@@ -13,6 +13,7 @@ from scripts import package_release, smoke_binaries
 
 
 RESOURCES = (
+    "assets/PDF_Bookmarks.ico",
     "python312.dll", "tcl86t.dll", "tk86t.dll",
     "_tcl_data/init.tcl", "_tk_data/tk.tcl",
     "tkinterdnd2/tkdnd/win-x64/libtkdnd2.10.2.dll",
@@ -35,6 +36,7 @@ class PackagingFixture:
             "scripts/build_windows.py", "scripts/test_frozen_updates.py",
             "README.md", "LICENSE.txt", "THIRD_PARTY_NOTICES.md", "VERSION",
             "requirements.txt", "requirements-build.txt", "licenses/ocr/LICENSE",
+            "assets/PDF_Bookmarks.png", "assets/PDF_Bookmarks.ico",
         ]
         for name in self.sources:
             file = self.root / name
@@ -90,7 +92,7 @@ class PortablePackagingTests(PackagingFixture, unittest.TestCase):
             self.assertEqual(hash_value, hashlib.sha256((output / name).read_bytes()).hexdigest())
 
     def test_missing_model_or_runtime_refuses_to_package(self):
-        for resource in ("rapidocr/models/rec.onnx", "python312.dll",
+        for resource in ("assets/PDF_Bookmarks.ico", "rapidocr/models/rec.onnx", "python312.dll",
                          "tkinterdnd2/tkdnd/win-x64/pkgIndex.tcl",
                          "onnxruntime/capi/onnxruntime_pybind11_state.pyd"):
             with self.subTest(resource=resource):

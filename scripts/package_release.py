@@ -65,7 +65,8 @@ def source_files():
         "build_info.py", "config_manager.py", "update_dialog.py", "updater_entry.py",
         "scripts/build_windows.py", "scripts/test_frozen_updates.py",
         "README.md", "LICENSE.txt", "THIRD_PARTY_NOTICES.md", "VERSION",
-        "requirements.txt", "requirements-build.txt")}
+        "requirements.txt", "requirements-build.txt", "assets/PDF_Bookmarks.png",
+        "assets/PDF_Bookmarks.ico")}
     required |= {path.relative_to(ROOT) for path in [*ROOT.glob("*.py"), *(ROOT / "updater").rglob("*.py")]}
     if not required <= set(sources):
         raise ValueError("Commit/stage all project source files before packaging")

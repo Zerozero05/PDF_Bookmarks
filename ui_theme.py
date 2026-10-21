@@ -4,6 +4,7 @@ No settings or system appearance are changed here. PDF image pixels and widget
 contents stay unchanged; only widget chrome and the known review hints change.
 """
 
+from pathlib import Path
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 
@@ -33,6 +34,22 @@ PALETTES = {
 }
 
 
+def apply_app_icon(window):
+    """Use the bundled Windows icon for this application and its child windows."""
+    if window.tk.call("tk", "windowingsystem") != "win32":
+        return False
+    try:
+        icon = str(Path(__file__).resolve().parent / "assets/PDF_Bookmarks.ico")
+        if isinstance(window, tk.Tk):
+            window.iconbitmap(default=icon)
+        else:
+            window.iconbitmap(icon)
+    except tk.TclError:
+        # A source checkout without its optional artwork still opens normally.
+        return False
+    return True
+
+
 def _settings(palette, rowheight):
     p = palette
     disabled = [("disabled", p["disabled"])]
@@ -49,17 +66,21 @@ def _settings(palette, rowheight):
             "selectbackground": p["selected_background"], "selectforeground": p["selected_foreground"],
         }},
         "TFrame": {"configure": {"background": p["background"]}},
+        "Toolbar.TFrame": {"configure": {"background": p["background"]}},
         "TLabel": {"configure": {"background": p["background"], "foreground": p["foreground"]},
                    "map": {"foreground": disabled}},
         "Title.TLabel": {"configure": {"font": "TkHeadingFont", "foreground": p["foreground"]}},
         "Section.TLabel": {"configure": {"font": "TkHeadingFont", "foreground": p["foreground"]}},
         "Muted.TLabel": {"configure": {"foreground": p["muted"]}},
-        "TLabelframe": {"configure": {"background": p["background"], "bordercolor": p["border"]}},
+        "TLabelframe": {"configure": {"background": p["background"], "bordercolor": p["border"],
+                                       "borderwidth": 1, "relief": "solid"}},
         "TLabelframe.Label": {"configure": {"background": p["background"], "foreground": p["foreground"]}},
         "TNotebook": {"configure": {"background": p["background"], "bordercolor": p["border"]}},
         "TNotebook.Tab": {
             "configure": {"padding": (10, 4), "background": p["background"], "foreground": p["muted"]},
-            "map": {"background": [("selected", p["surface"]), ("active", p["hover"])],
+            # Clam otherwise replaces this padding when a tab is selected.
+            "map": {"padding": [],
+                    "background": [("selected", p["surface"]), ("active", p["hover"])],
                     "foreground": [("disabled", p["disabled"]), ("selected", p["foreground"])]},
         },
         "TButton": {"configure": {"padding": (6, 3), "background": p["surface"], "foreground": p["foreground"]},
@@ -76,14 +97,19 @@ def _settings(palette, rowheight):
                     "foreground": [("disabled", p["disabled"]), ("!disabled", "#ffffff")],
                     "bordercolor": [("disabled", p["border"]), ("!disabled", p["accent"])]},
         },
-        "TEntry": {"configure": {"padding": (5, 2), "fieldbackground": p["input_background"],
+        "TEntry": {"configure": {"padding": (5, 2), "borderwidth": 1, "relief": "solid",
+                                  "fieldbackground": p["input_background"],
                                   "foreground": p["foreground"], "insertcolor": p["foreground"]},
-                   "map": {"foreground": disabled, "fieldbackground": [("disabled", p["background"])]}},
+                   "map": {"foreground": disabled, "fieldbackground": [("disabled", p["background"])],
+                           "bordercolor": control_border, "lightcolor": control_border,
+                           "darkcolor": control_border}},
         "TCombobox": {
-            "configure": {"padding": (5, 2), "fieldbackground": p["input_background"],
+            "configure": {"padding": (5, 2), "borderwidth": 1, "relief": "solid",
+                          "fieldbackground": p["input_background"],
                           "background": p["surface"], "foreground": p["foreground"], "arrowcolor": p["foreground"]},
             "map": {"foreground": disabled,
                     "bordercolor": control_border,
+                    "lightcolor": control_border, "darkcolor": control_border,
                     "background": [("disabled", p["background"]), ("hover", p["hover"])],
                     "arrowcolor": [("disabled", p["disabled"]), ("hover", p["accent"])],
                     "fieldbackground": [("disabled", p["background"]), ("readonly", p["input_background"])],
@@ -104,6 +130,18 @@ def _settings(palette, rowheight):
         "Treeview.Heading": {"configure": {"padding": (6, 4), "background": p["hover"], "foreground": p["foreground"]},
                              "map": {"background": [("active", p["surface"])]}},
     }
+    settings["Primary.TButton"] = settings["Accent.TButton"]
+    # Quiet auxiliary commands keep the same geometry and keyboard treatment
+    # as the original controls; hover and focus still have an explicit edge.
+    for name in ("Secondary.TButton", "Secondary.TMenubutton"):
+        settings[name] = {
+            "configure": {"background": p["background"], "foreground": p["foreground"],
+                          "bordercolor": p["background"], "lightcolor": p["background"],
+                          "darkcolor": p["background"]},
+            "map": {"background": button_background, "foreground": disabled,
+                    "bordercolor": control_border, "lightcolor": control_border,
+                    "darkcolor": control_border},
+        }
     for name in ("TCheckbutton", "TRadiobutton"):
         settings[name] = {"configure": {"padding": (2, 2), "background": p["background"],
                                          "foreground": p["foreground"], "indicatorbackground": p["input_background"],

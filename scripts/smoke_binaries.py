@@ -32,6 +32,7 @@ def verify_resources(names):
         "Tk runtime": lambda name: name.endswith("tk86t.dll") or name.endswith("tk90.dll"),
         "Tcl scripts": lambda name: name == "_tcl_data/init.tcl",
         "Tk scripts": lambda name: name == "_tk_data/tk.tcl",
+        "application icon": lambda name: name == "assets/pdf_bookmarks.ico",
         "TkDnD runtime": lambda name: "tkinterdnd2/tkdnd/win-x64" in name and name.endswith(".dll"),
         "TkDnD scripts": lambda name: "tkinterdnd2/tkdnd/win-x64" in name and name.endswith("/pkgindex.tcl"),
         "OCR configuration": lambda name: name.startswith("rapidocr/") and name.endswith(".yaml"),

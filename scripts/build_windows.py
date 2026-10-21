@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def runtime_fingerprint():
-    paths = [ROOT / "VERSION", *ROOT.glob("*.py"), *(ROOT / "updater").rglob("*.py")]
+    paths = [ROOT / "VERSION", *ROOT.glob("*.py"), *(ROOT / "updater").rglob("*.py"),
+             ROOT / "assets/PDF_Bookmarks.ico"]
     return {path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(paths)}
 
@@ -70,6 +71,8 @@ def build(kind, test_version=None):
         if not helper.is_file():
             raise ValueError("Build the external updater before building GUI binaries")
         command += ["--add-data", f"{helper};."]
+        icon = ROOT / "assets/PDF_Bookmarks.ico"
+        command += ["--icon", str(icon), "--add-data", f"{icon};assets"]
     if kind == "helper":
         # The helper owns filesystem/network/transaction work; it must not
         # collect the GUI, OCR models, or PDF dependencies as a second bundle.

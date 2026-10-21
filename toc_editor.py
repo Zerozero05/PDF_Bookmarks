@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import os
 from pathlib import Path
 import queue
 import threading
@@ -14,7 +15,8 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP
 
 from bookmarks_core import BookmarkError
 from gui_support import render_page
-from ui_theme import add_tooltip, refresh_theme_widgets
+from ui_layout import ColumnMemory, PaneMemory
+from ui_theme import add_tooltip, apply_app_icon, refresh_theme_widgets
 from editor_session import DraftStore, UndoHistory, restore_state, snapshot_state
 from toc_generation import DraftEntry, _page_regions, apply_mapping, generate_toc, load_draft, save_toc, section_titles
 
@@ -70,7 +72,7 @@ class TocEditor:
     def __init__(self, parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                  editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
                  on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None,
-                 topmost_var=None):
+                 topmost_var=None, focus_var=None):
         self.parent, self.executor, self.on_saved = parent, executor, on_saved
         self.editor_settings = dict(editor_settings or {})
         self.on_settings_changed = on_settings_changed
@@ -82,6 +84,7 @@ class TocEditor:
         if self.embedded:
             self.window.pack(fill="both", expand=True)
         else:
+            apply_app_icon(self.window)
             self.window.title("目录工作台：生成与编辑 JSON")
             self.window.geometry(self.editor_settings.get("editor_geometry", "1240x900"))
             self.window.minsize(1000, 720)
@@ -137,6 +140,9 @@ class TocEditor:
         self.title, self.printed, self.target = (tk.StringVar() for _ in range(3))
         self.confirmed = tk.BooleanVar(value=False)
         self.confirm_multi_delete = tk.BooleanVar(value=self.editor_settings.get("editor_confirm_multi_delete", True))
+        self.focus_mode = focus_var if focus_var is not None else tk.BooleanVar(
+            value=self.editor_settings.get("focus_mode", self.editor_settings.get("editor_focus_mode", False)))
+        self.book_name = tk.StringVar()
         self.entry_note = tk.StringVar()
         self.preview_page = tk.StringVar()
         self.preview_zoom = tk.StringVar(value="100%")
@@ -152,9 +158,16 @@ class TocEditor:
         self.save_dir = tk.StringVar(value=self.editor_settings.get("toc_save_dir", ""))
         self.save_location = tk.StringVar(value="保存位置：选择 PDF 后显示。")
         self._build()
+        self._pane_memory = PaneMemory(self.body, ratio=self.editor_settings.get("editor_pane_ratio", 0))
+        self._column_memory = ColumnMemory(self.tree, widths=self.editor_settings.get("editor_column_widths", {}))
+        self._apply_focus_mode(persist=False)
         refresh_theme_widgets(self.window)
         self._register_drop()
         self._variable_traces = []
+        self._variable_traces.append((self.focus_mode, self.focus_mode.trace_add(
+            "write", lambda *_: self._apply_focus_mode(persist=False))))
+        self._variable_traces.append((self.pdf, self.pdf.trace_add("write", self._update_book_name)))
+        self._update_book_name()
         for variable in (self.level, self.title, self.printed, self.target):
             self._variable_traces.append((variable, variable.trace_add("write", self._edit_changed)))
         for variable in (self.save_mode, self.save_dir):
@@ -191,9 +204,30 @@ class TocEditor:
         self._button(parent, "浏览…", command).grid(row=row, column=2, padx=(8, 0), pady=3)
 
     def _build(self):
+        if not self.embedded:
+            self.menu_bar = tk.Menu(self.window, tearoff=False)
+            self.view_menu = tk.Menu(self.menu_bar, tearoff=False)
+            self.view_menu.add_checkbutton(label="专注模式", variable=self.focus_mode,
+                                           command=self._apply_focus_mode)
+            self.view_menu.add_command(label="恢复本页默认布局", command=self.reset_layout)
+            self.menu_bar.add_cascade(label="视图", menu=self.view_menu)
+            self.help_menu = tk.Menu(self.menu_bar, tearoff=False)
+            self.help_menu.add_command(label="操作说明与快捷键…", command=self._show_help, accelerator="F1")
+            self.menu_bar.add_cascade(label="帮助", menu=self.help_menu)
+            self.window.configure(menu=self.menu_bar)
         outer = ttk.Frame(self.window, padding=8)
         outer.pack(fill="both", expand=True)
+        book_row = ttk.Frame(outer)
+        book_row.pack(fill="x", pady=(0, 4))
+        ttk.Label(book_row, textvariable=self.book_name, style="Section.TLabel", width=1).pack(
+            side="left", fill="x", expand=True)
+        path_button, self.path_menu = self._menu_button(book_row, "文件位置", "复制完整 PDF 路径或打开所在文件夹；下方路径仍可直接编辑。")
+        path_button.pack(side="right")
+        self.path_menu.configure(postcommand=self._update_path_menu)
+        self.path_menu.add_command(label="复制完整 PDF 路径", command=self._copy_pdf_path)
+        self.path_menu.add_command(label="打开所在文件夹", command=self._open_pdf_folder)
         source = ttk.Frame(outer)
+        self._focus_source = source
         source.pack(fill="x")
         source.columnconfigure(1, weight=1)
         self._path_row(source, 0, "PDF", self.pdf, self._choose_pdf)
@@ -230,6 +264,7 @@ class TocEditor:
         self.source_tabs.select(1 if self.mode == "edit" else 0)
         self.source_tabs.bind("<<NotebookTabChanged>>", self._source_tab_changed)
         feedback = ttk.Frame(outer)
+        self._feedback = feedback
         feedback.pack(fill="x", pady=(0, 2))
         self.cancel_button = ttk.Button(feedback, text="取消操作", command=self.cancel_operation, state="disabled")
         self.cancel_button.pack(side="right")
@@ -238,6 +273,7 @@ class TocEditor:
         summary_row = ttk.Frame(outer)
         summary_row.pack(fill="x", pady=(0, 4))
         options = ttk.Frame(summary_row)
+        self._focus_options = options
         options.pack(side="right")
         ttk.Label(options, text="目录布局").pack(side="left")
         column_mode = ttk.Combobox(options, textvariable=self.column_mode, values=list(COLUMN_MODES), state="readonly", width=7)
@@ -270,24 +306,24 @@ class TocEditor:
         self.draft_menu.add_checkbutton(label="删除多个目录项前询问", variable=self.confirm_multi_delete,
                                         command=self._persist_settings)
         ttk.Checkbutton(tools, text="自动暂存", variable=self.auto_save, command=self._schedule_draft).pack(side="left", padx=5)
+        self._button(tools, "下一待核对", self.next_pending, width=9).pack(side="right")
         filters = ttk.Frame(left)
         filters.pack(fill="x", pady=(0, 2))
         search = ttk.Entry(filters, textvariable=self.search_text, width=14)
+        self.search_entry = search
         search.pack(side="left", fill="x", expand=True)
         search.bind("<Return>", self._filter_changed)
         search.bind("<KP_Enter>", self._filter_changed)
         self._controls.append(search)
         self._button(filters, "查找", self._filter_changed, width=5).pack(side="left", padx=3)
-        filter_options = ttk.Frame(left)
-        filter_options.pack(fill="x", pady=(0, 3))
+        filter_options = filters
         for variable, values, width, callback in (
-                (self.filter_mode, ("全部", "待确认", "低可信", "未知页码"), 8, self._filter_changed),
-                (self.view_mode, ("详细表格", "目录树"), 9, self._view_changed)):
+                (self.filter_mode, ("全部", "待确认", "低可信", "未知页码"), 7, self._filter_changed),
+                (self.view_mode, ("详细表格", "目录树"), 8, self._view_changed)):
             combo = ttk.Combobox(filter_options, textvariable=variable, values=values, width=width, state="readonly")
             combo.pack(side="left", padx=2)
             combo.bind("<<ComboboxSelected>>", callback)
             self._controls.append(combo)
-        self._button(filter_options, "下一待核对", self.next_pending, width=10).pack(side="right")
         tree_frame = ttk.Frame(left)
         tree_frame.pack(fill="both", expand=True)
         tree_frame.columnconfigure(0, weight=1)
@@ -325,24 +361,31 @@ class TocEditor:
         for sequence in ("<minus>", "<KP_Subtract>"):
             self.tree.bind(sequence, lambda event=None: self.set_selected_expanded(False))
         self.tree.bind("<Double-1>", self._inline_edit)
+        self.tree.bind("<F2>", self._edit_title_shortcut)
         self.tree.bind("<ButtonPress-1>", self._drag_start)
         self.tree.bind("<B1-Motion>", self._drag_motion)
         self.tree.bind("<ButtonRelease-1>", self._drag_end)
+        self.empty_directory = ttk.Label(tree_frame,
+            text="拖入 PDF → 识别或导入目录 → 校对并保存\n\n支持目录树、多选与键盘操作", justify="center", style="Muted.TLabel")
+        self.empty_directory.place(relx=0.5, rely=0.35, anchor="center")
         tree_hint = ttk.Label(left, text="Enter 确认 · Delete 删除 · +/- 展开/折叠 · 1–9 改层级",
                               wraplength=470, style="Muted.TLabel")
         tree_hint.pack(fill="x", pady=(3, 0))
 
-        edit = ttk.LabelFrame(left, text="编辑选中项", padding=6)
+        edit = ttk.Frame(left, padding=(0, 6, 0, 0))
         edit.pack(fill="x", pady=(6, 0))
         edit.columnconfigure(3, weight=1)
+        ttk.Label(edit, text="编辑选中项", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 3))
         for column, label, variable, width in ((0, "层级", self.level, 4), (2, "标题", self.title, 38)):
-            ttk.Label(edit, text=label).grid(row=0, column=column, sticky="w", padx=3)
+            ttk.Label(edit, text=label).grid(row=1, column=column, sticky="w", padx=3)
             entry = ttk.Entry(edit, textvariable=variable, width=width)
-            entry.grid(row=0, column=column + 1, sticky="ew", padx=3, pady=3)
+            entry.grid(row=1, column=column + 1, sticky="ew", padx=3, pady=3)
+            if variable is self.title:
+                self._title_entry = entry
             self._bind_edit_entry(entry)
             self._controls.append(entry)
         fields = ttk.Frame(edit)
-        fields.grid(row=1, column=0, columnspan=4, sticky="ew")
+        fields.grid(row=2, column=0, columnspan=4, sticky="ew")
         for label, variable in (("印刷页", self.printed), ("PDF实际页", self.target)):
             ttk.Label(fields, text=label).pack(side="left", padx=3)
             entry = ttk.Entry(fields, textvariable=variable, width=7)
@@ -354,9 +397,9 @@ class TocEditor:
         confirm.pack(side="left", padx=8)
         self._controls.append(confirm)
         ttk.Label(edit, textvariable=self.entry_note, wraplength=450,
-                  style="Muted.TLabel").grid(row=2, column=0, columnspan=4, sticky="w", padx=3, pady=3)
+                  style="Muted.TLabel").grid(row=3, column=0, columnspan=4, sticky="w", padx=3, pady=3)
         edit_actions = ttk.Frame(edit)
-        edit_actions.grid(row=3, column=0, columnspan=4, sticky="ew")
+        edit_actions.grid(row=4, column=0, columnspan=4, sticky="ew")
         self._button(edit_actions, "更新选中项", self.update_entry).pack(side="left", padx=2)
         entry_button, self.entry_menu = self._menu_button(edit_actions, "目录操作", "Ctrl+A 选中当前筛选项；Esc 清除选中。Delete 删除；+ / - 展开/折叠所选，未选时作用于所有层级。Ctrl/Shift 多选；1–9 或拖动层级栏调整；双击编辑。")
         entry_button.pack(side="left", padx=3)
@@ -371,14 +414,22 @@ class TocEditor:
         self.entry_menu.add_separator()
         self.entry_menu.add_command(label="展开所选目录项", command=lambda: self.set_selected_expanded(True), accelerator="+")
         self.entry_menu.add_command(label="折叠所选目录项", command=lambda: self.set_selected_expanded(False), accelerator="−")
+        self._build_context_menu()
+        self.tree.bind("<Button-3>", self._show_context_menu)
+        self.tree.bind("<Shift-F10>", self._show_context_menu)
+        self.tree.bind("<Menu>", self._show_context_menu)
 
         preview_controls = ttk.Frame(right)
         preview_controls.pack(fill="x", pady=(0, 5))
-        ttk.Label(preview_controls, text="页面预览 · PDF 页", style="Section.TLabel").pack(side="left")
+        ttk.Label(preview_controls, text="PDF 页", style="Section.TLabel").pack(side="left")
         page_entry = ttk.Entry(preview_controls, textvariable=self.preview_page, width=6)
+        self.preview_page_entry = page_entry
         page_entry.pack(side="left", padx=4)
         self._controls.append(page_entry)
-        self._button(preview_controls, "查看", self.show_page).pack(side="left")
+        page_entry.bind("<Return>", lambda _event: self.show_page())
+        self._button(preview_controls, "查看", self.show_page, width=5).pack(side="left")
+        self._button(preview_controls, "上一页", lambda: self.step_page(-1), width=6).pack(side="left", padx=(4, 0))
+        self._button(preview_controls, "下一页", lambda: self.step_page(1), width=6).pack(side="left", padx=3)
         location_button, self.preview_location_menu = self._menu_button(preview_controls, "定位", "查看目录页、原目录行，或清除本页的识别区域与分栏线设置。")
         location_button.pack(side="left", padx=4)
         self.preview_location_menu.add_command(label="目录页", command=self.show_toc_page)
@@ -387,22 +438,23 @@ class TocEditor:
         self.preview_location_menu.add_command(label="清除此页设置", command=self.clear_page_region)
         zoom_controls = ttk.Frame(right)
         zoom_controls.pack(fill="x", pady=(0, 5))
+        ttk.Label(zoom_controls, text="缩放", style="Section.TLabel").pack(side="left", padx=(0, 6))
         self._button(zoom_controls, "缩小", lambda: self.zoom_preview(1 / 1.2), width=6).pack(side="left")
         self._button(zoom_controls, "放大", lambda: self.zoom_preview(1.2), width=6).pack(side="left", padx=4)
-        self._button(zoom_controls, "100%", self.reset_preview_zoom, width=6).pack(side="left")
+        zoom_reset = self._button(zoom_controls, "100%", self.reset_preview_zoom, textvariable=self.preview_zoom, width=6)
+        zoom_reset.pack(side="left")
+        add_tooltip(zoom_reset, "当前缩放比例；点击恢复 100%。Ctrl + 滚轮缩放，滚轮上下滚动。")
         fit_button, self.preview_fit_menu = self._menu_button(zoom_controls, "适应", "将预览适应宽度或显示整页；Ctrl + 滚轮也可缩放。")
         fit_button.pack(side="left", padx=3)
         self.preview_fit_menu.add_command(label="适合宽度", command=lambda: self.fit_preview("width"))
         self.preview_fit_menu.add_command(label="整页", command=lambda: self.fit_preview("page"))
-        ttk.Label(zoom_controls, textvariable=self.preview_zoom, width=5).pack(side="left", padx=6)
-        region_bar = ttk.Frame(right)
-        region_bar.pack(fill="x", pady=(0, 4))
-        region_combo = ttk.Combobox(region_bar, textvariable=self.region_tool, values=("浏览", "框选目录区域", "设置分栏线"), state="readonly", width=14)
-        region_combo.pack(side="left")
-        region_combo.bind("<<ComboboxSelected>>", self._region_tool_changed)
-        self._controls.append(region_combo)
-        self._button(region_bar, "上一页", lambda: self.step_page(-1), width=6).pack(side="left", padx=(4, 0))
-        self._button(region_bar, "下一页", lambda: self.step_page(1), width=6).pack(side="left", padx=3)
+        region_button, self.region_menu = self._menu_button(zoom_controls, "识别工具", "浏览、框选目录区域、设置分栏线；只影响下次识别，不修改 PDF。")
+        region_button.pack(side="left", padx=(6, 0))
+        for tool in ("浏览", "框选目录区域", "设置分栏线"):
+            self.region_menu.add_radiobutton(label=tool, variable=self.region_tool, value=tool,
+                                             command=self._region_tool_changed)
+        self.region_menu.add_separator()
+        self.region_menu.add_command(label="清除此页设置", command=self.clear_page_region)
         ttk.Label(right, textvariable=self.preview_status, wraplength=440).pack(fill="x", pady=(0, 5))
         canvas_frame = ttk.Frame(right)
         canvas_frame.pack(fill="both", expand=True)
@@ -420,6 +472,8 @@ class TocEditor:
         self.canvas.bind("<ButtonPress-1>", self._region_start)
         self.canvas.bind("<B1-Motion>", self._region_motion)
         self.canvas.bind("<ButtonRelease-1>", self._region_end)
+        self.empty_preview = ttk.Label(canvas_frame, text="只读 PDF 预览\n\n选择左侧目录项即可核对目标页\n滚轮滚动 · Ctrl + 滚轮缩放", justify="center", style="Muted.TLabel")
+        self.empty_preview.place(relx=0.5, rely=0.35, anchor="center")
 
         mapping_tabs = ttk.Notebook(outer)
         self.mapping_tabs = mapping_tabs
@@ -438,6 +492,7 @@ class TocEditor:
         self.segments.pack(side="left", fill="x", expand=True)
         self._button(segmented, "应用分段映射", self.apply_segments).pack(side="left", padx=8)
         save_options = ttk.Frame(outer)
+        self._focus_save_options = save_options
         save_options.pack(fill="x", pady=(0, 4))
         save_options.columnconfigure(2, weight=1)
         for column, value, label in ((0, "source", "保存到原目录"), (1, "custom", "自定义目录")):
@@ -450,6 +505,7 @@ class TocEditor:
         self._button(save_options, "浏览…", self._choose_save_dir).grid(row=0, column=3, padx=(6, 0))
         ttk.Label(save_options, textvariable=self.save_location, wraplength=1180).grid(row=1, column=0, columnspan=4, sticky="w")
         footer = ttk.Frame(outer)
+        self._footer = footer
         footer.pack(fill="x")
         self._button(footer, "确认所有已核对项…", self.confirm_all).pack(side="left")
         ttk.Checkbutton(footer, text="页码映射 / 高级", variable=self.advanced_open, command=self._toggle_advanced).pack(side="left", padx=8)
@@ -471,18 +527,206 @@ class TocEditor:
         tree_frame.pack(fill="both", expand=True)
         self._shortcut_bindings = []
         target = self.window.winfo_toplevel()
+        if not self.embedded:
+            callback = target.bind("<F1>", self._show_help, add="+")
+            self._shortcut_bindings.append((target, "<F1>", callback))
         for sequence, operation in (("<Control-z>", self.undo), ("<Control-y>", self.redo),
-                                    ("<Control-s>", self.save_draft)):
-            def shortcut(event, operation=operation):
+                                    ("<Control-s>", self.save_draft), ("<Control-f>", self.focus_search),
+                                    ("<Control-l>", self.focus_page)):
+            def shortcut(event, operation=operation,
+                         navigation=sequence in {"<Control-f>", "<Control-l>"}):
                 if self.closed:
                     return
                 if self.embedded and (not self.window.winfo_ismapped()
-                        or not str(event.widget).startswith(str(self.window) + ".")):
+                        or not navigation and not str(event.widget).startswith(str(self.window) + ".")):
                     return
                 operation()
                 return "break"
             callback = target.bind(sequence, shortcut, add="+")
             self._shortcut_bindings.append((target, sequence, callback))
+
+    def _show_help(self, _event=None):
+        from help_dialog import show_help
+        if not self.closed:
+            theme = self.theme_var.get() if self.theme_var is not None else "light"
+            show_help(self.window, theme)
+        return "break"
+
+    def _apply_focus_mode(self, persist=True):
+        """Change visible chrome without reloading or applying directory edits."""
+        if self.closed:
+            return
+        if self.focus_mode.get():
+            for frame in (self._focus_source, self.source_tabs, self._focus_options,
+                          self._focus_save_options):
+                frame.pack_forget()
+        else:
+            self._focus_source.pack(fill="x", before=self._feedback)
+            self.source_tabs.pack(fill="x", pady=4, before=self._feedback)
+            self._focus_options.pack(side="right")
+            self._focus_save_options.pack(side="bottom", fill="x", pady=(0, 4), after=self._footer)
+        if persist:
+            self._persist_settings()
+
+    def reset_layout(self):
+        """Restore display dimensions while keeping the directory and view state."""
+        if self.closed:
+            return
+        self._pane_memory.reset()
+        self._column_memory.reset()
+        self._persist_settings()
+
+    def _update_book_name(self, *_):
+        value = self.pdf.get().strip()
+        self.book_name.set(Path(value).name if value else "目录工作台")
+
+    def _update_path_menu(self):
+        state = "normal" if self.pdf.get().strip() and not self.busy else "disabled"
+        for label in ("复制完整 PDF 路径", "打开所在文件夹"):
+            self.path_menu.entryconfigure(label, state=state)
+
+    def _copy_pdf_path(self):
+        if self.closed or self.busy or not self.pdf.get().strip():
+            return
+        self.window.clipboard_clear()
+        self.window.clipboard_append(self.pdf.get().strip())
+        self.status.set("已复制完整 PDF 路径。")
+
+    def _open_pdf_folder(self):
+        if self.closed or self.busy or not self.pdf.get().strip():
+            return
+        try:
+            folder = Path(self.pdf.get().strip()).expanduser().absolute().parent
+            if not folder.is_dir():
+                raise ValueError("PDF 所在文件夹不存在。")
+            os.startfile(str(folder))
+        except (OSError, ValueError) as error:
+            self._error(error)
+
+    def _focus_input(self, entry):
+        if not self.closed and not self.busy and self._apply_auto(report=False):
+            entry.focus_set()
+            entry.select_range(0, "end")
+        return "break"
+
+    def focus_search(self):
+        return self._focus_input(self.search_entry)
+
+    def focus_page(self):
+        return self._focus_input(self.preview_page_entry)
+
+    def _edit_title_shortcut(self, _event=None):
+        if not self.closed and not self.busy and self.draft is not None:
+            self._context_edit_title()
+        return "break"
+
+    def _update_empty_directory(self):
+        if self.tree.get_children():
+            self.empty_directory.place_forget()
+        else:
+            self.empty_directory.configure(text=("没有匹配的目录项\n\n调整查找文字或筛选条件后重试" if self.draft is not None
+                else "拖入 PDF → 识别或导入目录 → 校对并保存\n\n支持目录树、多选与键盘操作"))
+            self.empty_directory.place(relx=0.5, rely=0.35, anchor="center")
+
+    def _show_preview_hint(self, text):
+        self.empty_preview.configure(text=text)
+        self.empty_preview.place(relx=0.5, rely=0.35, anchor="center")
+
+    def _build_context_menu(self):
+        self.context_menu = tk.Menu(self.tree, tearoff=False, postcommand=self._update_context_menu)
+        self.context_menu.add_command(label="确认所选并下一项", accelerator="Enter",
+                                      command=lambda: self._context_action(self.confirm_selected))
+        self.context_menu.add_command(label="编辑标题", command=lambda: self._context_action(self._context_edit_title))
+        self.context_menu.add_command(label="删除所选目录项", accelerator="Delete",
+                                      command=lambda: self._context_action(self.delete_entry))
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="上移", command=lambda: self._context_action(lambda: self.move_entry(-1)))
+        self.context_menu.add_command(label="下移", command=lambda: self._context_action(lambda: self.move_entry(1)))
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="查看目标页", command=lambda: self._context_action(self._context_target))
+        self.context_menu.add_command(label="原目录行", command=lambda: self._context_action(self.show_source))
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="全选当前目录项", accelerator="Ctrl+A",
+                                      command=lambda: self._context_action(self.select_all_entries))
+        self.context_menu.add_command(label="清除选中", accelerator="Esc",
+                                      command=lambda: self._context_action(self.clear_selection))
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="展开所选或全部目录", accelerator="+",
+                                      command=lambda: self._context_action(lambda: self.set_selected_expanded(True)))
+        self.context_menu.add_command(label="折叠所选或全部目录", accelerator="−",
+                                      command=lambda: self._context_action(lambda: self.set_selected_expanded(False)))
+
+    def _update_context_menu(self):
+        available = not self.closed and not self.busy and self.draft is not None
+        selected = available and bool(self.tree.selection())
+        for label in ("确认所选并下一项", "编辑标题", "删除所选目录项", "上移", "下移", "原目录行", "清除选中"):
+            self.context_menu.entryconfigure(label, state="normal" if selected else "disabled")
+        index = self._index() if selected else None
+        target = index is not None and valid_target(self.draft.entries[index], self.draft.page_count)
+        self.context_menu.entryconfigure("查看目标页", state="normal" if target else "disabled")
+        self.context_menu.entryconfigure("全选当前目录项", state="normal" if available and self._visible_indices else "disabled")
+        tree = available and self.view_mode.get() == "目录树" and bool(self.tree.get_children())
+        for label in ("展开所选或全部目录", "折叠所选或全部目录"):
+            self.context_menu.entryconfigure(label, state="normal" if tree else "disabled")
+
+    def _show_context_menu(self, event):
+        if self.closed or self.busy or self.draft is None:
+            return "break"
+        if getattr(event, "num", None) == 3:
+            row = self.tree.identify_row(event.y)
+            if not row:
+                return "break"
+            if self._inline is not None:
+                if not self._apply_auto(report=False):
+                    return "break"
+                self._close_inline()
+            if row not in self.tree.selection():
+                if not self._apply_auto(report=False):
+                    return "break"
+                self._close_inline()
+                self.tree.selection_set(row)
+                self.tree.focus(row)
+                self._selected()
+            x, y = event.x_root, event.y_root
+        else:
+            box = self.tree.bbox(self.tree.focus()) if self.tree.focus() else None
+            x = self.tree.winfo_rootx() + 12
+            y = self.tree.winfo_rooty() + (box[1] + box[3] if box else 12)
+        self.tree.focus_set()
+        self._update_context_menu()
+        try:
+            self.context_menu.tk_popup(x, y)
+        finally:
+            self.context_menu.grab_release()
+        return "break"
+
+    def _context_action(self, operation):
+        if not self.closed and not self.busy and self.draft is not None:
+            operation()
+
+    def _context_edit_title(self):
+        index = self._index()
+        if index is None:
+            return
+        row = str(index)
+        self.tree.see(row)
+        column = "#0" if self.view_mode.get() == "目录树" else "title"
+        box = self.tree.bbox(row, column)
+        if box:
+            left, right = max(0, box[0]), min(self.tree.winfo_width(), box[0] + box[2])
+            if right > left:
+                event = tk.Event()
+                event.x, event.y = (left + right) // 2, box[1] + box[3] // 2
+                self._inline_edit(event)
+                return
+        self._title_entry.focus_set()
+        self._title_entry.select_range(0, "end")
+
+    def _context_target(self):
+        index = self._index()
+        if index is not None and valid_target(self.draft.entries[index], self.draft.page_count):
+            self.preview_page.set(str(self.draft.entries[index].pdf_page))
+            self.show_page()
 
     def _history_state(self):
         sources, metadata = [], []
@@ -779,6 +1023,8 @@ class TocEditor:
         self._autosave_blocked = False
         self.tree.delete(*self.tree.get_children())
         self.canvas.delete("all")
+        self._update_empty_directory()
+        self._show_preview_hint("只读 PDF 预览\n\n选择左侧目录项即可核对目标页\n滚轮滚动 · Ctrl + 滚轮缩放")
         self._photo = None
         self._cancel_zoom()
         self._preview_center = None
@@ -970,6 +1216,7 @@ class TocEditor:
                 action, token, value = self.events.get_nowait()
                 if action == "render":
                     if token == self._render_token:
+                        self.empty_preview.place_forget()
                         self._photo = tk.PhotoImage(master=self.window, data=base64.b64encode(value).decode("ascii"))
                         self.canvas.delete("all")
                         self.canvas.create_image(0, 0, image=self._photo, anchor="nw")
@@ -1108,6 +1355,7 @@ class TocEditor:
             tag = "context" if index not in matches else "pending" if not entry.confirmed else ""
             self.tree.insert(parent, "end", iid=str(index), text=entry.title, values=self._row_values(entry), open=True, tags=(tag,))
         self._update_summary()
+        self._update_empty_directory()
         if matches:
             indices = selected if isinstance(selected, (list, tuple)) else [selected or 0]
             indices = sorted({index for index in indices if index in matches}) or [min(matches)]
@@ -1137,6 +1385,8 @@ class TocEditor:
     def _selected(self, _event=None):
         if self.busy:
             return
+        if self.draft is not None:
+            self._update_summary()
         index = self._index()
         if index is None:
             return
@@ -1169,6 +1419,7 @@ class TocEditor:
         else:
             self._render_token += 1
             self.canvas.delete("all")
+            self._show_preview_hint("目标页未知或越界\n\n请校正页码映射或填写 PDF 实际页")
             self.preview_status.set("此项目标页未知或越界。请校正页码映射或填写 PDF 实际页。")
 
     def _edit_changed(self, *_):
@@ -1238,7 +1489,8 @@ class TocEditor:
 
     def _update_summary(self):
         confirmed = sum(bool(entry.confirmed) for entry in self.draft.entries)
-        self.summary.set(f"共 {len(self.draft.entries)} 项 · 已确认 {confirmed} · 显示 {len(self._visible_indices)} 项 · PDF {self.draft.page_count} 页")
+        total = len(self.draft.entries)
+        self.summary.set(f"已确认 {confirmed}/{total} · 已选 {len(self.tree.selection())} · 显示 {len(self._visible_indices)} 项 · PDF {self.draft.page_count} 页")
 
     def _apply_auto(self, report=False):
         if self.closed or self.busy or self._editing_index is None:
@@ -1257,6 +1509,7 @@ class TocEditor:
                 else:
                     self._render_token += 1
                     self.canvas.delete("all")
+                    self._show_preview_hint("目标页未知\n\n请填写 PDF 实际页并核对")
                     self.preview_status.set("目标页未知，请填写 PDF 实际页并核对。")
             return True
         except (ValueError, OSError) as error:
@@ -1409,6 +1662,8 @@ class TocEditor:
         self.tree.selection_remove(*self.tree.selection())
         self.tree.focus("")
         self._clear_fields()
+        if self.draft is not None:
+            self._update_summary()
         return "break"
 
     def set_selected_expanded(self, expanded):
@@ -1712,6 +1967,7 @@ class TocEditor:
         if self._render_future is not None:
             self._render_future.cancel()
         self.preview_status.set(f"PDF 第 {page} 页（只读预览）")
+        self.empty_preview.place_forget()
         self.canvas.delete("all")
         scale = self._preview_scale
 
@@ -1763,7 +2019,11 @@ class TocEditor:
     def _persist_settings(self):
         updates = {"editor_topmost": self.topmost.get(), "toc_save_dir": self.save_dir.get(),
                    "toc_save_mode": self.save_mode.get(),
-                   "editor_confirm_multi_delete": self.confirm_multi_delete.get()}
+                   "editor_confirm_multi_delete": self.confirm_multi_delete.get(),
+                   "editor_focus_mode": self.focus_mode.get(),
+                   "focus_mode": self.focus_mode.get(),
+                   "editor_pane_ratio": self._pane_memory.snapshot(),
+                   "editor_column_widths": self._column_memory.snapshot()}
         if not self.embedded:
             updates["editor_geometry"] = self.window.winfo_toplevel().geometry()
         self.editor_settings.update(updates)
@@ -1849,6 +2109,8 @@ class TocEditor:
             self._autosave_after = None
         self.closed = True
         self._persist_settings()
+        self._pane_memory.close()
+        self._column_memory.close()
         self.cancel.set()
         self._render_token += 1
         if self._render_future is not None:
@@ -1881,8 +2143,8 @@ class TocEditor:
 def open_editor(parent, executor, pdf_path=None, toc_path=None, on_saved=None, mode=None,
                 editor_settings=None, on_settings_changed=None, draft_dir=None, host=None,
                 on_closed=None, task_guard=None, theme_var=None, on_theme_changed=None,
-                topmost_var=None):
+                topmost_var=None, focus_var=None):
     """Open an editor sharing the main window's serialized PDF worker."""
     return TocEditor(parent, executor, pdf_path, toc_path, on_saved, mode, editor_settings,
                      on_settings_changed, draft_dir, host, on_closed, task_guard, theme_var, on_theme_changed,
-                     topmost_var)
+                     topmost_var, focus_var)

@@ -39,7 +39,7 @@
 
 上表记录已保留的 v1.4.1 下载名称。v1.5.0 及后续构建自动采用同一外部命名规则，无需发布后手工改名；内部主入口为 `PDF_Bookmarks.exe`，Portable 根目录为 `PDF_Bookmarks`。旧 Release 内部名称与字节不修改，设置路径仍为 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`。
 
-每个新正式版本保留原七项附件：`PDF_Bookmarks_v1.9.0_win_x64.exe`、`PDF_Bookmarks_v1.9.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.9.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.9.0_win_x64_full.zip`、`PDF_Bookmarks_v1.9.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`；后续版本仅替换其中版本号。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
+每个新正式版本保留原七项附件：`PDF_Bookmarks_v1.10.0_win_x64.exe`、`PDF_Bookmarks_v1.10.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.10.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.10.0_win_x64_full.zip`、`PDF_Bookmarks_v1.10.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`；后续版本仅替换其中版本号。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
 
 只重命名 EXE/ZIP 的外部文件名不会改变其字节或 SHA-256。同步更新下载链接、`SHA256SUMS.txt` 与便携 `.zip.sha256` 内容中记录的文件名，保留对应的原校验值；校验文件自身的内容会因此改变。若将来重新打包或修改任何程序包内容，则必须重新计算该文件的校验值，不能沿用本次哈希。上传后按最终文件名下载并检查校验结果。
 

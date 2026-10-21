@@ -1,12 +1,14 @@
 """Regressions for review state, fast edits, batch hierarchy and modeless saving."""
 
 from concurrent.futures import ThreadPoolExecutor
+import gc
 from pathlib import Path
 import tempfile
 import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+import weakref
 
 import pymupdf
 from tkinterdnd2 import TkinterDnD
@@ -31,7 +33,7 @@ class FastEditorTests(unittest.TestCase):
         self.errors = []
         self.error_patch = patch.object(toc_editor.messagebox, "showerror",
                                        side_effect=lambda title, message, errors=self.errors, **kw: errors.append(message))
-        self.error_patch.start()
+        self.error_mock = self.error_patch.start()
         self.settings_callback = Mock()
         self.editor = toc_editor.open_editor(self.root, self.executor, self.pdf,
                                             on_settings_changed=self.settings_callback)
@@ -40,13 +42,20 @@ class FastEditorTests(unittest.TestCase):
         self.load()
 
     def tearDown(self):
+        root_reference = weakref.ref(self.root)
         self.editor.close()
         self.executor.shutdown(wait=True)
         self.root.update_idletasks()
         self.root.destroy()
         self.error_patch.stop()
+        self.error_mock.reset_mock()
+        self.settings_callback.reset_mock()
         self.assertEqual(self.pdf.read_bytes(), self.original)
         self.temporary.cleanup()
+        self.editor = self.root = self.executor = None
+        self.error_mock = self.error_patch = self.settings_callback = None
+        gc.collect()
+        self.assertIsNone(root_reference(), "Test dialog mocks retained a destroyed Tk interpreter")
 
     def load(self, levels=(1, 1, 1), confirmed=False):
         self.editor.draft = Draft(self.pdf, 5, [DraftEntry(level, f"标题 {index}", index + 1,
