@@ -271,17 +271,13 @@ class WorkspaceTabTests(unittest.TestCase):
         editor.title.set("正在编辑的标题")
         editor._cancel_edit_timer()
 
-        def theme_button(parent):
-            for child in parent.winfo_children():
-                if isinstance(child, ttk.Checkbutton) and child.cget("text") == "夜间模式":
-                    return child
-                found = theme_button(child)
-                if found is not None:
-                    return found
-
         self.assertIs(editor.theme_var, self.main.theme)
-        for page, mode in ((self.main.main_page, "dark"), (self.main.editor_page, "light")):
-            theme_button(page).invoke()
+        geometry = self.root.geometry()
+        for page, label, mode in ((self.main.main_page, "夜间模式", "dark"),
+                                  (self.main.editor_page, "护眼模式", "eye_care"),
+                                  (self.main.editor_page, "日间模式", "light")):
+            self.main.workspace_tabs.select(page)
+            self.main.theme_menu.invoke(label)
             self.root.update()
             self.assertEqual(self.main.theme.get(), mode)
             self.assertEqual(ttk.Style(self.root).theme_use(), "pdf_" + mode)
@@ -289,13 +285,14 @@ class WorkspaceTabTests(unittest.TestCase):
             self.assertEqual(asdict(model), original)
             self.assertEqual(editor.title.get(), "正在编辑的标题")
             self.assertIs(editor._photo, photo)
+            self.assertEqual(self.root.geometry(), geometry)
 
     def test_editor_save_controls_remain_visible_at_minimum_size_in_both_themes(self):
         self.root.maxsize(2000, 1400)
         self.root.geometry("1000x760+80+60")
         self.root.deiconify()
         editor = self.editor()
-        for mode in ("light", "dark"):
+        for mode in ("light", "dark", "eye_care"):
             self.main.theme.set(mode)
             self.main._set_theme()
             self.spin(lambda: self.main.workspace_tabs.winfo_height() == self.root.winfo_height())

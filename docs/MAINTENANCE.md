@@ -26,7 +26,7 @@
 
 ## 发布命名与校验清单
 
-仓库名为 `PDF_Bookmarks`。发行版标题只使用版本号，例如 `v1.8.1`，与版本标签一致；公开正文直接从项目简介、更新内容开始，不再次显示同版本大标题。`docs/RELEASE_NOTES.md` 首行 `# v1.8.1` 保留为版本校验元数据，公开时仅移除该首行及紧随的空行，不删除正文更新与附件信息。文件名采用 `PDF_Bookmarks_<版本>_<系统>_<架构>[_类型].<扩展名>`，各部分使用下划线连接。Windows x64 用 `win_x64`；图形界面单文件版省略类型，其他包使用 `cli`、`portable`、`full` 区分。
+仓库名为 `PDF_Bookmarks`。发行版标题只使用版本号，例如 `v1.9.0`，与版本标签一致；公开正文直接从项目简介、更新内容开始，不再次显示同版本大标题。`docs/RELEASE_NOTES.md` 首行 `# v1.9.0` 保留为版本校验元数据，公开时仅移除该首行及紧随的空行，不删除正文更新与附件信息。文件名采用 `PDF_Bookmarks_<版本>_<系统>_<架构>[_类型].<扩展名>`，各部分使用下划线连接。Windows x64 用 `win_x64`；图形界面单文件版省略类型，其他包使用 `cli`、`portable`、`full` 区分。
 
 | 构建或此前发布文件名 | v1.4.1 发布页文件名 |
 | --- | --- |
@@ -39,7 +39,7 @@
 
 上表记录已保留的 v1.4.1 下载名称。v1.5.0 及后续构建自动采用同一外部命名规则，无需发布后手工改名；内部主入口为 `PDF_Bookmarks.exe`，Portable 根目录为 `PDF_Bookmarks`。旧 Release 内部名称与字节不修改，设置路径仍为 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json`。
 
-每个新正式版本保留原七项附件：`PDF_Bookmarks_v1.8.1_win_x64.exe`、`PDF_Bookmarks_v1.8.1_win_x64_cli.exe`、`PDF_Bookmarks_v1.8.1_win_x64_portable.zip`、`PDF_Bookmarks_v1.8.1_win_x64_full.zip`、`PDF_Bookmarks_v1.8.1_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`；后续版本仅替换其中版本号。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
+每个新正式版本保留原七项附件：`PDF_Bookmarks_v1.9.0_win_x64.exe`、`PDF_Bookmarks_v1.9.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.9.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.9.0_win_x64_full.zip`、`PDF_Bookmarks_v1.9.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`；后续版本仅替换其中版本号。`update-manifest.json` 的 `assets.single` 与 `assets.portable` 分别包含文件名、完整 SHA-256 和字节数；Portable 包内每个程序文件同样记录大小与 SHA-256。
 
 只重命名 EXE/ZIP 的外部文件名不会改变其字节或 SHA-256。同步更新下载链接、`SHA256SUMS.txt` 与便携 `.zip.sha256` 内容中记录的文件名，保留对应的原校验值；校验文件自身的内容会因此改变。若将来重新打包或修改任何程序包内容，则必须重新计算该文件的校验值，不能沿用本次哈希。上传后按最终文件名下载并检查校验结果。
 
@@ -100,3 +100,5 @@ GitHub 可以保存正式源码、版本历史和发布包；GitHub Actions 可�
 优先核验程序自身 clean 的实际范围；范围过大时按清单逐文件/目录处理，最后只删除已确认的空目录。Windows 使用同一套原生 PowerShell 文件操作，不跨 shell 拼接删除。清理后再次核对保留源码、交接和后续依赖，记录实际删除、保留与失败；受策略或文件占用阻止时如实报告，不换工具绕过。只有明确授权的范围可以删除，本地清理不能删除远端历史版本；GitHub 发布工作流本身不执行本机清理。
 
 v1.8.1将两页置顶入口合为标题栏单一按钮；启动取旧主界面topmost，保留editor_topmost旧字段与独立工作台入口。配置schema继续为1，PDF/OCR、JSON/CLI及事务更新实现保持。Windows原生按钮初始化不可用时使用标签栏单一入口。验证见VALIDATION.md，不把旧试用身份与字节当正式包。
+
+v1.9.0增加删除多项前询问偏好及eye_care主题值，旧配置缺字段时采用安全默认，schema仍为1，不运行配置迁移。Windows原生菜单用系统配色，其他控件仍三主题，PDF像素保持；其余JSON/CLI、原路径写入和升级回滚约定保留。验证对象与局限见VALIDATION.md。

@@ -39,7 +39,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_both_local_themes_style_controls_and_readonly_disabled_states(self):
         style = ttk.Style(self.root)
-        for name in ("light", "dark"):
+        for name in ui_theme.PALETTES:
             with self.subTest(theme=name):
                 p = ui_theme.apply_theme(self.root, name)
                 self.assertEqual(style.theme_use(), "pdf_" + name)
@@ -56,7 +56,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_switching_themes_preserves_pixels_text_tree_and_window_geometry(self):
         geometry = self.root.geometry()
-        for name in ("dark", "light", "dark", "light"):
+        for name in ("dark", "eye_care", "light", "eye_care", "dark", "light"):
             p = ui_theme.apply_theme(self.root, name)
             self.root.update()
             self.assertEqual(self.root.geometry(), geometry)
@@ -97,6 +97,29 @@ class ThemeTests(unittest.TestCase):
             ui_theme.apply_theme(self.root, "system")
         self.assertEqual(ttk.Style(self.root).theme_use(), "pdf_dark")
 
+    def test_eye_care_refreshes_menu_and_passive_help_with_the_same_palette(self):
+        menu = tk.Menu(self.root, tearoff=False)
+        menu.add_command(label="目录操作")
+        button = ttk.Button(self.frame, text="设置")
+        button.pack()
+        handle = ui_theme.add_tooltip(button, "暖色界面；PDF 内容保持原样。")
+        try:
+            palette = ui_theme.apply_theme(self.root, "eye_care")
+            self.root.deiconify()
+            self.root.update()
+            handle._show()
+            self.assertIsNotNone(handle.tip)
+            label = handle.tip.winfo_children()[0]
+            expected_menu = ui_theme.menu_colors(menu, palette)
+            self.assertEqual(self.rgb(menu.cget("background")), self.rgb(expected_menu["background"]))
+            self.assertEqual(self.rgb(menu.cget("foreground")), self.rgb(expected_menu["foreground"]))
+            self.assertEqual(self.rgb(label.cget("background")), self.rgb(palette["surface"]))
+            self.assertEqual(self.rgb(label.cget("foreground")), self.rgb(palette["foreground"]))
+            self.assertIsNone(self.root.grab_current())
+        finally:
+            handle.close()
+            self.root.withdraw()
+
     def test_existing_and_later_combobox_popdowns_follow_the_local_theme(self):
         def popdown_listbox(combo):
             popup = self.root.tk.call("ttk::combobox::PopdownWindow", str(combo))
@@ -110,7 +133,7 @@ class ThemeTests(unittest.TestCase):
 
         combo = ttk.Combobox(self.frame, state="readonly", values=("白天", "夜间"))
         existing = popdown_listbox(combo)
-        for name in ("dark", "light", "dark"):
+        for name in ("dark", "eye_care", "light", "dark", "eye_care"):
             p = ui_theme.apply_theme(self.root, name)
             for option, expected in (("background", "input_background"), ("foreground", "foreground"),
                                      ("selectbackground", "selected_background"), ("selectforeground", "selected_foreground")):
@@ -120,13 +143,86 @@ class ThemeTests(unittest.TestCase):
         self.assertEqual(self.rgb(self.root.tk.call(popup, "cget", "-background")), self.rgb(p["input_background"]))
         self.assertEqual(self.rgb(self.root.tk.call(popup, "cget", "-foreground")), self.rgb(p["foreground"]))
 
+    def test_checkbutton_indicator_draws_a_tick_instead_of_a_cross(self):
+        for name in ui_theme.PALETTES:
+            with self.subTest(theme=name):
+                p = ui_theme.apply_theme(self.root, name)
+                style = ttk.Style(self.root)
+                self.assertIn("Checkbutton.indicator", style.element_names())
+                images = self.root._pdf_checkbutton_images["pdf_" + name]
+                checked = images["selected"]
+                size = checked.width()
+
+                def pixel(x, y):
+                    return checked.get(round(x * (size - 1)), round(y * (size - 1)))
+
+                # The rising long stroke and lower short stroke form a tick;
+                # a cross would also have a white upper-left diagonal.
+                self.assertEqual(pixel(.25, .30), tuple(v // 257 for v in self.rgb(p["accent"])))
+                self.assertEqual(pixel(.40, .60), (255, 255, 255))
+                self.assertEqual(pixel(.70, .40), (255, 255, 255))
+                self.assertEqual(images["unselected"].get(size // 2, size // 2),
+                                 tuple(v // 257 for v in self.rgb(p["input_background"])))
+                self.assertNotEqual(images["disabled_selected"].get(size // 2, size // 2),
+                                    images["disabled_unselected"].get(size // 2, size // 2))
+
+    def test_themed_checkbuttons_keep_variable_command_keyboard_and_disabled_behavior(self):
+        enabled = tk.BooleanVar(self.root, False)
+        mode = tk.StringVar(self.root, "light")
+        calls = []
+        folder = ttk.Checkbutton(self.frame, text="包含子文件夹", variable=enabled,
+                                 command=lambda: calls.append(enabled.get()))
+        later = tk.Toplevel(self.root)
+        later.withdraw()
+        night = ttk.Checkbutton(later, text="夜间模式", variable=mode,
+                                onvalue="dark", offvalue="light")
+        folder.pack()
+        for name in ("light", "dark", "light"):
+            ui_theme.apply_theme(self.root, name)
+            folder.invoke()
+            self.assertTrue(enabled.get())
+            folder.state(["disabled"])
+            folder.invoke()
+            self.assertTrue(enabled.get())
+            self.assertTrue(folder.instate(["disabled", "selected"]))
+            folder.state(["!disabled"])
+            folder.invoke()
+            self.assertFalse(enabled.get())
+            night.invoke()
+            self.assertEqual(mode.get(), "dark")
+            night.invoke()
+            self.assertEqual(mode.get(), "light")
+        self.assertEqual(calls, [True, False] * 3)
+        self.root.deiconify()
+        self.root.update()
+        folder.focus_force()
+        folder.event_generate("<KeyPress-space>")
+        folder.event_generate("<KeyRelease-space>")
+        self.root.update()
+        self.assertTrue(enabled.get())
+        self.assertEqual(calls[-1], True)
+        self.root.withdraw()
+
+    def test_checkbutton_images_are_shared_with_later_windows_and_reused(self):
+        ui_theme.apply_theme(self.root, "light")
+        images = self.root._pdf_checkbutton_images
+        names = {str(image) for theme in images.values() for image in theme.values()}
+        later = tk.Toplevel(self.root)
+        later.withdraw()
+        ttk.Checkbutton(later, text="已核对目标页").pack()
+        ui_theme.apply_theme(later, "dark")
+        later.destroy()
+        ui_theme.apply_theme(self.root, "light")
+        self.assertIs(self.root._pdf_checkbutton_images, images)
+        self.assertTrue(names <= set(map(str, self.root.image_names())))
+
     def test_main_hint_review_and_selection_colors_have_readable_contrast(self):
         def luminance(color):
             rgb = [channel / 65535 for channel in self.rgb(color)]
             linear = [value / 12.92 if value <= .04045 else ((value + .055) / 1.055) ** 2.4 for value in rgb]
             return sum(value * weight for value, weight in zip(linear, (.2126, .7152, .0722)))
 
-        for name in ("light", "dark"):
+        for name in ui_theme.PALETTES:
             p = ui_theme.apply_theme(self.root, name)
             for foreground, background in (("foreground", "background"), ("muted", "background"),
                                            ("context", "surface"), ("pending", "surface"),

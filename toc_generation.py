@@ -61,10 +61,11 @@ class _Line:
 _PART = re.compile(r"^(?:第\s*[\d一二三四五六七八九十百零〇]+\s*[篇部卷]|part\s+(?:[\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b)", re.I)
 _CHAPTER = re.compile(r"^(?:第\s*[\d一二三四五六七八九十百零〇]+\s*[章篇部卷]|(?:chapter|part)\s+(?:[\divxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b)", re.I)
 _FRONT = re.compile(r"^(?:前言|序言|自序|序|致谢|出版说明|preface|foreword|acknowledg)", re.I)
-_ROOT = re.compile(r"^(?:附录|参考文献|索引|习题解答|appendix|references|bibliography|index|(?:外国)?(?:数学家)?译名对照表$|关键词索引$|(?:部分)?习题答案(?:和提示)?$)", re.I)
+_ROOT = re.compile(r"^(?:附录|参考文献|索引|习题解答|appendix|references|bibliography|index|(?:外国)?(?:数学家)?译名对照表$|关键词索引$|(?:部分)?习题答案(?:和提示)?$|(?:《[^》]+》)?(?:已出版书目|出版书目)$)", re.I)
 _LEVEL_ROOT = re.compile(r"^(?:符号表|注释|prologue\b|notes\s+and\s+comments|list\s+of\s+(?:special\s+)?symbols)", re.I)
 _PAGE = re.compile(r"^(.*?)(?:\s|[.．·…⋯_—-])+(\d{1,5}|[ivxlcdmIVXLCDM]{1,10})\s*$")
 _NUM = re.compile(r"^[\s\-—–·.]*([0-9]{1,5})[\s\-—–·.]*$")
+_BARE_SECTION = re.compile(r"[§S]?\s*\d+(?:\s*[.．]\s*\d+)+\s*[.．]?", re.I)
 _OCR = None
 
 
@@ -588,29 +589,44 @@ def _parse(lines, *, layout=None, sources=None):
     pending = ""
     pending_x = None
     pending_rect = None
+    pending_line = None
     column = None
     for line in lines:
         if line.column != column:
             pending, pending_x, pending_rect, column = "", None, None, line.column
+        if pending_line is not None and line.y - pending_line.y > max(line.height, pending_line.height) * 2:
+            pending = ""
         raw = line.text.strip()
+        # A detected label alone is not a title followed by a terminal page.
+        if _BARE_SECTION.fullmatch(raw):
+            pending, pending_x, pending_rect, pending_line = _clean(raw), line.x, line.rect, line
+            continue
         heading = _CHAPTER.match(raw)
         if heading and not raw[heading.end():].strip():
             pending, pending_x = _clean(raw), line.x
             pending_rect = line.rect
+            pending_line = line
             continue
         match = _PAGE.match(raw)
         if not match:
-            if _CHAPTER.match(raw) or re.match(r"^[§S]?\s*\d+[.．]\d+", raw):
+            if ((_CHAPTER.match(raw) or re.match(r"^[§S]?\s*\d+[.．]\d+", raw))
+                    and not re.search(r"[.．·…⋯_](?:\s*[.．·…⋯_]){2}", raw)):
                 pending = _clean(raw)
                 pending_x = line.x
                 pending_rect = line.rect
+                pending_line = line
+            else:
+                pending = ""
             continue
         title = _clean(match.group(1))
-        if not title or _normal(title) in {"目录", "contents", "tableofcontents"} or _NUM.match(title):
+        if not title or _normal(title) in {"目录", "contents", "tableofcontents"} or _NUM.match(title) or _BARE_SECTION.fullmatch(title):
             continue
         x = line.x
         rect = line.rect
-        if pending and not (_CHAPTER.match(title) or re.match(r"^[§S]?\s*\d+[.．]\d+", title)):
+        label_only = _CHAPTER.fullmatch(pending) or _BARE_SECTION.fullmatch(pending)
+        independent = not label_only and (_ROOT.fullmatch(title) or _FRONT.fullmatch(title)
+                                           or _LEVEL_ROOT.fullmatch(title))
+        if pending and not (_CHAPTER.match(title) or independent or re.match(r"^[§S]?\s*\d+[.．]\d+", title)):
             title = pending + " " + title
             x = pending_x
             rect = (tuple(pymupdf.Rect(pending_rect) | pymupdf.Rect(rect))
@@ -768,6 +784,122 @@ def _recover_ocr_rows(image, lines, engine, cancel):
         lines[lines.index(line)] = candidate
 
 
+def _recover_leader_rows(pix, lines, engine, cancel):
+    """Read title/page ink separately where a long dotted leader joins them.
+
+    Dot components locate actual rows, including rows missed by text detection.
+    Existing column boundaries and complete readings are retained; no page or
+    heading is supplied from numbering order or another row.
+    """
+    import cv2
+    import numpy as np
+    from difflib import SequenceMatcher
+
+    _cancelled(cancel)
+    if not lines:
+        return lines
+    heights = sorted(line.height for line in lines)
+    height = heights[len(heights) // 2]
+    image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    _, ink = cv2.threshold(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), 0, 255,
+                          cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    dots = [index for index, box in enumerate(stats[1:], 1)
+            if box[2] <= height * .25 and box[3] <= height * .25 and 2 <= box[4] <= height * height * .06]
+    if not dots:
+        return lines
+    mask = np.isin(labels, dots).astype(np.uint8) * 255
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE,
+                             np.ones((max(1, int(height * .12)), max(3, int(height * .7))), np.uint8))
+    _, _, runs, _ = cv2.connectedComponentsWithStats(closed, 8)
+    runs = [box for box in runs[1:] if box[2] >= height * 3 and box[3] < height * .5]
+    bounds = sorted({(line.column, line.left, line.right) for line in lines if line.right is not None})
+    if not bounds:
+        bounds = [(0, 0, pix.width)]
+    candidates, crops = [], []
+
+    def trim(x0, y0, x1, y1):
+        x0, y0 = max(0, int(x0)), max(0, int(y0))
+        x1, y1 = min(pix.width, int(x1)), min(pix.height, int(y1))
+        _, _, components, _ = cv2.connectedComponentsWithStats(ink[y0:y1, x0:x1], 8)
+        glyphs = [box for box in components[1:]
+                  if (box[3] >= height * .25 or box[2] >= height * .35) and box[4] >= 3]
+        if not glyphs:
+            return None
+        a, b = min(box[0] for box in glyphs), min(box[1] for box in glyphs)
+        c, d = max(box[0] + box[2] for box in glyphs), max(box[1] + box[3] for box in glyphs)
+        pad = max(2, int(height * .12))
+        rect = (max(x0, x0 + a - pad), max(y0, y0 + b - pad),
+                min(x1, x0 + c + pad), min(y1, y0 + d + pad))
+        return image[rect[1]:rect[3], rect[0]:rect[2]], rect
+
+    for column, left, right in bounds:
+        column_runs = [box for box in runs if left <= box[0] and box[0] + box[2] <= right]
+        # Two independent leaders on one baseline need established columns.
+        column_runs = sorted((box for box in column_runs if not any(
+            other is not box and abs(float(other[1]) - float(box[1])) < height * .5
+            for other in column_runs)), key=lambda box: box[1])
+        for index, box in enumerate(column_runs):
+            _cancelled(cancel)
+            x, y, width, run_height = map(int, box[:4])
+            center = y + run_height / 2
+            y0 = max(center - height, (float(column_runs[index - 1][1]) + center) / 2 if index else center - height * .8)
+            y1 = min(center + height, (float(column_runs[index + 1][1]) + center) / 2 if index + 1 < len(column_runs) else center + height * .8)
+            title = trim(left, y0, x + height * .35, y1)
+            page = trim(x + width - height * .15, y0, right, y1)
+            if title is not None and page is not None:
+                candidates.append((column, left, right, title[1], page[1]))
+                crops.extend((title[0], page[0]))
+    if not crops:
+        return lines
+    _cancelled(cancel)
+    result = engine.recognize_txt(crops)
+    _cancelled(cancel)
+    if result.txts is None or result.scores is None:
+        return lines
+    recovered = []
+    pairs = zip(candidates, zip(result.txts[::2], result.txts[1::2]),
+                zip(result.scores[::2], result.scores[1::2]))
+    for (column, left, right, title_rect, page_rect), texts, scores in pairs:
+        title, page = (_clean(str(text)) for text in texts)
+        score = min(map(float, scores))
+        if score < .8 or not re.fullmatch(r"\d{1,5}|[ivxlcdmIVXLCDM]{1,10}", page):
+            continue
+        rect = tuple(pymupdf.Rect(title_rect) | pymupdf.Rect(page_rect))
+        line = _Line(f"{title} {page}", title_rect[0], (rect[1] + rect[3]) / 2,
+                     rect[3] - rect[1], score, column=column, left=left, right=right, rect=rect)
+        if _parse([line]):
+            recovered.append(line)
+    if not recovered:
+        return lines
+    combined = []
+    for column, _, _ in bounds:
+        original = [line for line in lines if line.column == column]
+        additional = [line for line in recovered if line.column == column]
+        for line in additional:
+            old = min((row for row in original if abs(row.y - line.y) <= max(row.height, line.height) * .6),
+                      key=lambda row: abs(row.y - line.y), default=None)
+            parsed = _parse([old]) if old is not None else []
+            current = _parse([line])[0]
+            old_key = _normal(parsed[0][0]) if parsed else ""
+            key = _normal(current[0])
+            # A reliable same-image reread can repair a low-score full row,
+            # but must agree on its label and page, retaining the confidence cap.
+            if (parsed and old.score < .8 and line.score >= .92 and parsed[0][1] == current[1]
+                    and _ocr_label(parsed[0][0]) == _ocr_label(current[0])
+                    and not (key != old_key and key in old_key)
+                    and SequenceMatcher(None, old_key, key).ratio() >= .85):
+                line.score = min(old.score, line.score)
+                line.x, line.y, line.height, line.rect = old.x, old.y, old.height, old.rect
+                original[original.index(old)] = line
+        combined.extend(_merge_ocr_lines(original, additional))
+    columns = {column for column, _, _ in bounds}
+    spanning = [line for line in lines if line.column not in columns]
+    first = min(line.y for line in combined)
+    return ([line for line in spanning if line.y < first] + combined
+            + [line for line in spanning if line.y >= first])
+
+
 def _ocr_lines(pix, cancel=None, *, column_mode="auto", split=None):
     """Compare TOC orientations; long leaders can fool the angle classifier."""
     engine = _engine()
@@ -829,6 +961,7 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto", split=None):
                     lines = ([line for line in spanning if line.y < first] + columns
                              + [line for line in spanning if line.y >= first])
             _refine_ocr_titles(pix, lines, engine, cancel)
+            lines = _recover_leader_rows(pix, lines, engine, cancel)
         return lines
     finally:
         # RapidOCR call options persist on its singleton; keep later pages safe.

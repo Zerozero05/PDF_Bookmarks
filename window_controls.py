@@ -63,8 +63,9 @@ class _WindowsCaption:
 
     def set_topmost(self, pinned):
         # Tk changes the owner's topmost band without promoting this native
-        # owned popup. Keep the button reachable above the owner's caption.
-        if not self.api.SetWindowPos(self.popup, -1 if pinned else -2, 0, 0, 0, 0, 0x13):
+        # owned popup. Promote the button without reordering its owner above
+        # an already open native menu (NOOWNERZORDER | NOACTIVATE | NOMOVE | NOSIZE).
+        if not self.api.SetWindowPos(self.popup, -1 if pinned else -2, 0, 0, 0, 0, 0x213):
             raise ctypes.WinError(ctypes.get_last_error())
 
 
@@ -116,8 +117,8 @@ class TitlebarPin:
                               style="Accent.TButton" if pinned else "TButton")
         self._queue_topmost()
 
-    def _queue_topmost(self, _event=None):
-        if self.closed or self.native is None:
+    def _queue_topmost(self, event=None):
+        if self.closed or self.native is None or event is not None and event.widget is not self.root:
             return
         if self._topmost_after is not None:
             self.root.after_cancel(self._topmost_after)

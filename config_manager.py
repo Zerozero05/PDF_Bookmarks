@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
     "geometry": "1100x860",
     "editor_geometry": "1240x900",
     "editor_topmost": False,
+    "editor_confirm_multi_delete": True,
     "toc_save_mode": "source",
     "toc_save_dir": "",
     "auto_check_update": True,
@@ -88,7 +89,7 @@ def sanitize_settings(settings) -> dict:
             continue
         if name == "toc_save_mode" and value not in {"source", "custom"}:
             continue
-        if name == "theme" and value not in {"light", "dark"}:
+        if name == "theme" and value not in {"light", "dark", "eye_care"}:
             continue
         if name in {"geometry", "editor_geometry"}:
             match = re.fullmatch(r"(\d{1,4})x(\d{1,4})(?:[+-]\d{1,6}[+-]\d{1,6})?", value)

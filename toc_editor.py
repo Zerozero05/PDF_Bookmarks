@@ -14,7 +14,7 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP
 
 from bookmarks_core import BookmarkError
 from gui_support import render_page
-from ui_theme import refresh_theme_widgets
+from ui_theme import add_tooltip, refresh_theme_widgets
 from editor_session import DraftStore, UndoHistory, restore_state, snapshot_state
 from toc_generation import DraftEntry, _page_regions, apply_mapping, generate_toc, load_draft, save_toc, section_titles
 
@@ -136,6 +136,7 @@ class TocEditor:
         self.level = tk.StringVar(value="1")
         self.title, self.printed, self.target = (tk.StringVar() for _ in range(3))
         self.confirmed = tk.BooleanVar(value=False)
+        self.confirm_multi_delete = tk.BooleanVar(value=self.editor_settings.get("editor_confirm_multi_delete", True))
         self.entry_note = tk.StringVar()
         self.preview_page = tk.StringVar()
         self.preview_zoom = tk.StringVar(value="100%")
@@ -174,6 +175,14 @@ class TocEditor:
         self._controls.append(button)
         return button
 
+    def _menu_button(self, parent, text, hint):
+        button = ttk.Menubutton(parent, text=text)
+        menu = tk.Menu(button, tearoff=False)
+        button.configure(menu=menu)
+        self._controls.append(button)
+        add_tooltip(button, hint)
+        return button, menu
+
     def _path_row(self, parent, row, label, variable, command):
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
         entry = ttk.Entry(parent, textvariable=variable)
@@ -190,9 +199,14 @@ class TocEditor:
         self._path_row(source, 0, "PDF", self.pdf, self._choose_pdf)
         if not self._shared_topmost:
             ttk.Checkbutton(source, text="置顶", variable=self.topmost, command=self._set_topmost).grid(row=0, column=3, padx=(8, 0))
-        if self.theme_var is not None:
-            ttk.Checkbutton(source, text="夜间模式", variable=self.theme_var, onvalue="dark", offvalue="light",
-                            command=self.on_theme_changed).grid(row=0, column=4, padx=(8, 0))
+        if self.theme_var is not None and not self.embedded:
+            appearance = ttk.Menubutton(source, text="外观")
+            appearance_menu = tk.Menu(appearance, tearoff=False)
+            appearance.configure(menu=appearance_menu)
+            appearance.grid(row=0, column=4, padx=(8, 0))
+            for label, value in (("日间", "light"), ("夜间", "dark"), ("护眼", "eye_care")):
+                appearance_menu.add_radiobutton(label=label, variable=self.theme_var, value=value,
+                                                command=self.on_theme_changed)
         self.source_tabs = ttk.Notebook(outer)
         self.source_tabs.pack(fill="x", pady=4)
         actions = ttk.Frame(self.source_tabs, padding=6)
@@ -245,10 +259,16 @@ class TocEditor:
         body.add(right, weight=3)
         tools = ttk.Frame(left)
         tools.pack(fill="x", pady=(0, 3))
+        ttk.Label(tools, text="目录校对", style="Section.TLabel").pack(side="left", padx=(0, 8))
         self._button(tools, "撤销", self.undo, width=5).pack(side="left")
         self._button(tools, "重做", self.redo, width=5).pack(side="left", padx=3)
-        self._button(tools, "暂存草稿", self.save_draft, width=8).pack(side="left", padx=(6, 3))
-        self._button(tools, "恢复草稿", self.restore_draft, width=8).pack(side="left")
+        draft_button, self.draft_menu = self._menu_button(tools, "草稿 / 设置", "暂存或恢复校对草稿；设置多选删除前是否询问。")
+        draft_button.pack(side="left", padx=(6, 3))
+        self.draft_menu.add_command(label="暂存草稿", command=self.save_draft, accelerator="Ctrl+S")
+        self.draft_menu.add_command(label="恢复草稿", command=self.restore_draft)
+        self.draft_menu.add_separator()
+        self.draft_menu.add_checkbutton(label="删除多个目录项前询问", variable=self.confirm_multi_delete,
+                                        command=self._persist_settings)
         ttk.Checkbutton(tools, text="自动暂存", variable=self.auto_save, command=self._schedule_draft).pack(side="left", padx=5)
         filters = ttk.Frame(left)
         filters.pack(fill="x", pady=(0, 2))
@@ -296,11 +316,19 @@ class TocEditor:
         self.tree.bind("<KeyPress>", self._level_key)
         self.tree.bind("<Return>", self.confirm_selected)
         self.tree.bind("<KP_Enter>", self.confirm_selected)
+        self.tree.bind("<Delete>", self.delete_entry)
+        self.tree.bind("<Control-a>", self.select_all_entries)
+        self.tree.bind("<Control-A>", self.select_all_entries)
+        self.tree.bind("<Escape>", self.clear_selection)
+        for sequence in ("<plus>", "<KP_Add>"):
+            self.tree.bind(sequence, lambda event=None: self.set_selected_expanded(True))
+        for sequence in ("<minus>", "<KP_Subtract>"):
+            self.tree.bind(sequence, lambda event=None: self.set_selected_expanded(False))
         self.tree.bind("<Double-1>", self._inline_edit)
         self.tree.bind("<ButtonPress-1>", self._drag_start)
         self.tree.bind("<B1-Motion>", self._drag_motion)
         self.tree.bind("<ButtonRelease-1>", self._drag_end)
-        tree_hint = ttk.Label(left, text="Enter 确认并下一项；Ctrl / Shift 多选；1–9 改层级；左右拖动层级栏；双击编辑。",
+        tree_hint = ttk.Label(left, text="Enter 确认 · Delete 删除 · +/- 展开/折叠 · 1–9 改层级",
                               wraplength=470, style="Muted.TLabel")
         tree_hint.pack(fill="x", pady=(3, 0))
 
@@ -329,27 +357,43 @@ class TocEditor:
                   style="Muted.TLabel").grid(row=2, column=0, columnspan=4, sticky="w", padx=3, pady=3)
         edit_actions = ttk.Frame(edit)
         edit_actions.grid(row=3, column=0, columnspan=4, sticky="ew")
-        for label, command in (("更新选中项", self.update_entry), ("添加", self.add_entry),
-                                ("删除", self.delete_entry), ("上移", lambda: self.move_entry(-1)),
-                                ("下移", lambda: self.move_entry(1))):
-            self._button(edit_actions, label, command).pack(side="left", padx=2)
+        self._button(edit_actions, "更新选中项", self.update_entry).pack(side="left", padx=2)
+        entry_button, self.entry_menu = self._menu_button(edit_actions, "目录操作", "Ctrl+A 选中当前筛选项；Esc 清除选中。Delete 删除；+ / - 展开/折叠所选，未选时作用于所有层级。Ctrl/Shift 多选；1–9 或拖动层级栏调整；双击编辑。")
+        entry_button.pack(side="left", padx=3)
+        self.entry_menu.add_command(label="全选当前目录项", command=self.select_all_entries, accelerator="Ctrl+A")
+        self.entry_menu.add_command(label="清除选中", command=self.clear_selection, accelerator="Esc")
+        self.entry_menu.add_separator()
+        self.entry_menu.add_command(label="添加", command=self.add_entry)
+        self.entry_menu.add_command(label="删除所选目录项", command=self.delete_entry, accelerator="Delete")
+        self.entry_menu.add_separator()
+        self.entry_menu.add_command(label="上移", command=lambda: self.move_entry(-1))
+        self.entry_menu.add_command(label="下移", command=lambda: self.move_entry(1))
+        self.entry_menu.add_separator()
+        self.entry_menu.add_command(label="展开所选目录项", command=lambda: self.set_selected_expanded(True), accelerator="+")
+        self.entry_menu.add_command(label="折叠所选目录项", command=lambda: self.set_selected_expanded(False), accelerator="−")
 
         preview_controls = ttk.Frame(right)
         preview_controls.pack(fill="x", pady=(0, 5))
-        ttk.Label(preview_controls, text="查看 PDF 页").pack(side="left")
+        ttk.Label(preview_controls, text="页面预览 · PDF 页", style="Section.TLabel").pack(side="left")
         page_entry = ttk.Entry(preview_controls, textvariable=self.preview_page, width=6)
         page_entry.pack(side="left", padx=4)
         self._controls.append(page_entry)
         self._button(preview_controls, "查看", self.show_page).pack(side="left")
-        self._button(preview_controls, "目录页", self.show_toc_page).pack(side="left", padx=4)
-        self._button(preview_controls, "原目录行", self.show_source, width=9).pack(side="left")
+        location_button, self.preview_location_menu = self._menu_button(preview_controls, "定位", "查看目录页、原目录行，或清除本页的识别区域与分栏线设置。")
+        location_button.pack(side="left", padx=4)
+        self.preview_location_menu.add_command(label="目录页", command=self.show_toc_page)
+        self.preview_location_menu.add_command(label="原目录行", command=self.show_source)
+        self.preview_location_menu.add_separator()
+        self.preview_location_menu.add_command(label="清除此页设置", command=self.clear_page_region)
         zoom_controls = ttk.Frame(right)
         zoom_controls.pack(fill="x", pady=(0, 5))
         self._button(zoom_controls, "缩小", lambda: self.zoom_preview(1 / 1.2), width=6).pack(side="left")
         self._button(zoom_controls, "放大", lambda: self.zoom_preview(1.2), width=6).pack(side="left", padx=4)
         self._button(zoom_controls, "100%", self.reset_preview_zoom, width=6).pack(side="left")
-        self._button(zoom_controls, "适合宽度", lambda: self.fit_preview("width"), width=8).pack(side="left", padx=3)
-        self._button(zoom_controls, "整页", lambda: self.fit_preview("page"), width=5).pack(side="left")
+        fit_button, self.preview_fit_menu = self._menu_button(zoom_controls, "适应", "将预览适应宽度或显示整页；Ctrl + 滚轮也可缩放。")
+        fit_button.pack(side="left", padx=3)
+        self.preview_fit_menu.add_command(label="适合宽度", command=lambda: self.fit_preview("width"))
+        self.preview_fit_menu.add_command(label="整页", command=lambda: self.fit_preview("page"))
         ttk.Label(zoom_controls, textvariable=self.preview_zoom, width=5).pack(side="left", padx=6)
         region_bar = ttk.Frame(right)
         region_bar.pack(fill="x", pady=(0, 4))
@@ -357,8 +401,7 @@ class TocEditor:
         region_combo.pack(side="left")
         region_combo.bind("<<ComboboxSelected>>", self._region_tool_changed)
         self._controls.append(region_combo)
-        self._button(region_bar, "清除此页设置", self.clear_page_region, width=12).pack(side="left", padx=4)
-        self._button(region_bar, "上一页", lambda: self.step_page(-1), width=6).pack(side="left")
+        self._button(region_bar, "上一页", lambda: self.step_page(-1), width=6).pack(side="left", padx=(4, 0))
         self._button(region_bar, "下一页", lambda: self.step_page(1), width=6).pack(side="left", padx=3)
         ttk.Label(right, textvariable=self.preview_status, wraplength=440).pack(fill="x", pady=(0, 5))
         canvas_frame = ttk.Frame(right)
@@ -1347,21 +1390,62 @@ class TocEditor:
         except (ValueError, OSError) as error:
             self._error(error)
 
-    def delete_entry(self):
-        if self.busy:
-            return
+    def select_all_entries(self, _event=None):
+        if self.closed or self.busy or self.draft is None or not self._apply_auto(report=False):
+            return "break"
+        self._close_inline()
+        indices = [str(index) for index in sorted(self._visible_indices) if self.tree.exists(str(index))]
+        if indices:
+            focus = self.tree.focus()
+            self.tree.selection_set(*indices)
+            self.tree.focus(focus if focus in indices else indices[0])
+            self._selected()
+        return "break"
+
+    def clear_selection(self, _event=None):
+        if self.closed or self.busy or not self._apply_auto(report=False):
+            return "break"
+        self._close_inline()
+        self.tree.selection_remove(*self.tree.selection())
+        self.tree.focus("")
+        self._clear_fields()
+        return "break"
+
+    def set_selected_expanded(self, expanded):
+        if self.closed or self.busy or self.view_mode.get() != "目录树":
+            return "break"
+        selection = self.tree.selection()
+        pending = list(selection or self.tree.get_children())
+        while pending:
+            iid = pending.pop()
+            children = self.tree.get_children(iid)
+            if not selection:
+                pending.extend(children)
+            if children:
+                self.tree.item(iid, open=expanded)
+        return "break"
+
+    def delete_entry(self, _event=None):
+        if self.closed or self.busy or self.draft is None:
+            return "break"
         try:
-            if not self._apply_auto(report=False):
-                return
             indices = sorted(int(iid) for iid in self.tree.selection())
             if not indices:
-                return
+                return "break"
+            if (len(indices) > 1 and self.confirm_multi_delete.get() and not messagebox.askyesno(
+                    "删除所选目录项", f"确定删除所选的 {len(indices)} 个目录项吗？\n只删除所选项；可通过“撤销”恢复。",
+                    parent=self.window, default=messagebox.NO)):
+                return "break"
+            if not self._apply_auto(report=False):
+                return "break"
             remaining = [entry for index, entry in enumerate(self.draft.entries) if index not in indices]
             self._validate_levels([entry.level for entry in remaining])
             self.draft.entries[:] = remaining
             self._refresh(indices[0])
+            self.status.set(f"已删除所选 {len(indices)} 项；可通过“撤销”恢复。")
         except (ValueError, OSError) as error:
             self._error(error)
+        return "break"
 
     def move_entry(self, amount):
         try:
@@ -1678,7 +1762,8 @@ class TocEditor:
 
     def _persist_settings(self):
         updates = {"editor_topmost": self.topmost.get(), "toc_save_dir": self.save_dir.get(),
-                   "toc_save_mode": self.save_mode.get()}
+                   "toc_save_mode": self.save_mode.get(),
+                   "editor_confirm_multi_delete": self.confirm_multi_delete.get()}
         if not self.embedded:
             updates["editor_geometry"] = self.window.winfo_toplevel().geometry()
         self.editor_settings.update(updates)

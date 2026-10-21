@@ -129,6 +129,48 @@ class TitlebarPinTests(unittest.TestCase):
             move.assert_not_called()
 
     @unittest.skipUnless(sys.platform == "win32", "Native Windows caption")
+    def test_child_focus_does_not_reorder_pin_or_owner_while_opening_controls(self):
+        self.show()
+        field = ttk.Entry(self.root)
+        field.pack()
+        self.root.update()
+        self.assertIsNone(self.pin._topmost_after)
+        with patch.object(self.pin.native, "set_topmost", wraps=self.pin.native.set_topmost) as sync:
+            field.event_generate("<FocusIn>")
+            self.assertIsNone(self.pin._topmost_after)
+            self.root.update()
+            sync.assert_not_called()
+
+    @unittest.skipUnless(sys.platform == "win32", "Native Windows caption")
+    def test_root_focus_sync_survives_child_focus_and_trace_changes_still_sync(self):
+        self.show()
+        with patch.object(self.pin.native, "set_topmost", wraps=self.pin.native.set_topmost) as sync:
+            self.pin._queue_topmost(SimpleNamespace(widget=self.root))
+            pending = self.pin._topmost_after
+            self.assertIsNotNone(pending)
+            self.pin._queue_topmost(SimpleNamespace(widget=self.pin.button))
+            self.assertEqual(self.pin._topmost_after, pending)
+            self.root.update()
+            sync.assert_called_once_with(False)
+            sync.reset_mock()
+            self.value.set(True)
+            self.root.update()
+            sync.assert_called_once_with(True)
+
+    @unittest.skipUnless(sys.platform == "win32", "Native Windows caption")
+    def test_native_band_sync_preserves_owner_z_order(self):
+        self.show()
+        native = self.pin.native
+        with patch.object(native.api, "SetWindowPos", wraps=native.api.SetWindowPos) as position:
+            for enabled in (True, False):
+                self.value.set(enabled)
+                self.root.update()
+            band_changes = [call.args for call in position.call_args_list if call.args[1] in (-1, -2)]
+            self.assertEqual([args[1] for args in band_changes], [-1, -2])
+            self.assertTrue(all(args[-1] == 0x213 for args in band_changes),
+                            "Synchronizing the pin must not lift its owner over an open menu")
+
+    @unittest.skipUnless(sys.platform == "win32", "Native Windows caption")
     def test_disabled_modal_owner_cannot_be_pinned_through_the_caption_button(self):
         self.show()
         native = self.pin.native

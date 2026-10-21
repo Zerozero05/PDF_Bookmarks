@@ -2,22 +2,22 @@
 
 为普通 PDF 添加多级书签，可独立使用，也适配 Zotero 附件。支持导入目录 JSON，或从文字、扫描 PDF 识别目录，经预览与人工校对后写入，保持原 PDF 文件名和路径。
 
-当前正式版本：**v1.8.1**。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
+当前版本：**v1.9.0**。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
 
-[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.8.1) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
+[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.9.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
 
 ## 选择下载方式
 
 | 下载 | 运行方式与区别 |
 | --- | --- |
-| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
-| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
-| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
-| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/PDF_Bookmarks_v1.9.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
+| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/PDF_Bookmarks_v1.9.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
+| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/PDF_Bookmarks_v1.9.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
+| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/PDF_Bookmarks_v1.9.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
 两种 GUI 功能相同，无需安装 Python，共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json` 及本机草稿。便携版主要省去启动解包，不保证 OCR 或 PDF 写入更快；“便携”指免安装，设置与草稿仍保存在当前电脑。
 
-下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.8.1/PDF_Bookmarks_v1.8.1_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
+下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.9.0/PDF_Bookmarks_v1.9.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
 
 ## 快速使用
 
@@ -46,7 +46,7 @@
 | 目标页预览 | 滚轮、按钮及 Ctrl＋滚轮缩放 50%–300%，适合宽度/整页、翻页与原目录行定位；预览只读 |
 | 页码映射 | 固定偏移、分段映射或指定实际 PDF 页，支持多级书签 |
 | 拖放与批量 | 拖入 PDF、JSON 或文件夹，逐本预览、勾选和查看处理结果 |
-| 窗口与主题 | 同窗两标签页共用窗口状态与标题栏置顶按钮，可记忆夜间模式；PDF 页面图像保持原像素 |
+| 窗口与主题 | 同窗两标签页共用窗口状态与标题栏置顶；通过左上菜单选择日间、夜间、护眼，PDF 页面图像保持原色 |
 | 原地写入 | 临时副本写入并校验后原子替换，保持原文件名与路径 |
 | 备份 | 默认开启；默认保存在各 PDF 旁的 `_backup`，可自选目录 |
 | 已有书签 | 默认跳过；明确选择替换时覆盖整棵原书签树 |
@@ -62,6 +62,7 @@
 
 | 版本／记录 | 日期 | 主要变更 |
 | --- | --- | --- |
+| v1.9.0 | 2026-10-21 | 1、增强扫描目录补漏与层级保护，勾选统一为清晰勾号。<br>2、新增Delete、Ctrl+A、清除选择和目录树整层展开折叠。<br>3、左上菜单、护眼配色、预览滚动缩放及夜间菜单交互优化。<br>[本次完整记录](CHANGELOG.md#v1-9-0) |
 | 文档更新 | 2026-10-20 | 1、合并重复介绍，整理下载、使用和文档入口。<br>2、补齐全部更新摘要、编号及详情链接；程序仍为 v1.8.1。<br>[本次完整记录](CHANGELOG.md#docs-2026-10-20) |
 | v1.8.1 | 2026-10-19 | 1、两页共用标题栏置顶按钮，切页保持状态。<br>2、修复开启置顶后无法再次点击取消的问题。<br>[本次完整记录](CHANGELOG.md#v1-8-1) |
 | v1.8.0 | 2026-10-18 | 1、修复切页时窗口伸缩、移位，改善拖宽响应。<br>2、整理界面，新增可记忆的夜间模式。<br>3、支持 Enter 多选确认、下一待核对及快速查找。<br>[本次完整记录](CHANGELOG.md#v1-8-0) |
