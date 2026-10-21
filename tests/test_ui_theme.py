@@ -159,12 +159,30 @@ class ThemeTests(unittest.TestCase):
                 # The rising long stroke and lower short stroke form a tick;
                 # a cross would also have a white upper-left diagonal.
                 self.assertEqual(pixel(.25, .30), tuple(v // 257 for v in self.rgb(p["accent"])))
-                self.assertEqual(pixel(.40, .60), (255, 255, 255))
+                self.assertEqual(pixel(.30, .54), (255, 255, 255))
                 self.assertEqual(pixel(.70, .40), (255, 255, 255))
                 self.assertEqual(images["unselected"].get(size // 2, size // 2),
                                  tuple(v // 257 for v in self.rgb(p["input_background"])))
                 self.assertNotEqual(images["disabled_selected"].get(size // 2, size // 2),
                                     images["disabled_unselected"].get(size // 2, size // 2))
+
+    def test_tick_pixels_remain_unambiguous_at_different_indicator_sizes(self):
+        # A font/DPI-dependent 15px image quantizes the old (.40, .60)
+        # sample into the bend's background. Sample inside both strokes.
+        for name, palette in ui_theme.PALETTES.items():
+            for size in range(14, 37):
+                with self.subTest(theme=name, size=size):
+                    images = ui_theme._checkbutton_images(self.root, palette, size)
+                    checked = images["selected"]
+
+                    def pixel(x, y):
+                        return checked.get(round(x * (size - 1)), round(y * (size - 1)))
+
+                    self.assertEqual(pixel(.25, .30), tuple(v // 257 for v in self.rgb(palette["accent"])))
+                    self.assertEqual(pixel(.30, .54), (255, 255, 255))
+                    self.assertEqual(pixel(.70, .40), (255, 255, 255))
+                    self.assertEqual(images["unselected"].get(size // 2, size // 2),
+                                     tuple(v // 257 for v in self.rgb(palette["input_background"])))
 
     def test_themed_checkbuttons_keep_variable_command_keyboard_and_disabled_behavior(self):
         enabled = tk.BooleanVar(self.root, False)
