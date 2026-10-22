@@ -18,6 +18,7 @@ from ui_theme import add_tooltip, apply_app_icon, apply_theme, refresh_theme_wid
 from help_dialog import show_help
 from ui_layout import ColumnMemory, PaneMemory
 from window_controls import TitlebarPin
+from shortcut_keys import ShortcutProfile
 
 
 class BookmarkWindow:
@@ -42,7 +43,9 @@ class BookmarkWindow:
         self.editor_settings = {key: settings[key] for key in
                                 ("editor_geometry", "editor_topmost", "toc_save_mode", "toc_save_dir",
                                  "editor_confirm_multi_delete", "focus_mode", "editor_focus_mode",
-                                 "editor_pane_ratio", "editor_column_widths")}
+                                 "editor_pane_ratio", "editor_column_widths", "editor_shortcuts")}
+        self.shortcut_profile = ShortcutProfile(settings["editor_shortcuts"], save=self._save_custom_shortcuts)
+        root._pdf_shortcut_profile = self.shortcut_profile
         self.pending_editor_saves = []
         self.inputs, self.plans, self.drop_paths = [], [], []
         self.items, self.toc_overrides, self.bookmark_rows = {}, {}, {}
@@ -119,17 +122,6 @@ class BookmarkWindow:
         self.workspace_tabs.bind("<<NotebookTabChanged>>", self._workspace_changed)
         outer = ttk.Frame(self.main_page, padding=10)
         outer.pack(fill="both", expand=True)
-        header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 8))
-        ttk.Label(header, text="PDF_Bookmarks", font=("Microsoft YaHei", 14, "bold"),
-                  style="Title.TLabel").pack(side="left")
-        self.update_button = ttk.Button(header, text="帮助 / 更新", command=self._show_updates,
-                                        style="Secondary.TButton")
-        self.update_button.pack(side="right", padx=8)
-        self.directory_button = ttk.Button(header, text="生成 / 编辑目录…", command=self._open_editor,
-                                           style="Secondary.TButton")
-        self.directory_button.pack(side="left", padx=(20, 6))
-        self.inputs.append(self.directory_button)
         self.source_tabs = ttk.Notebook(outer)
         self.source_tabs.pack(fill="x", pady=(0, 8))
         single, batch, dropped = (ttk.Frame(self.source_tabs, padding=8) for _ in range(3))
@@ -174,7 +166,7 @@ class BookmarkWindow:
         cleanup = ttk.Checkbutton(options, text="写入成功后删除目录 JSON", variable=self.delete_toc)
         cleanup.grid(row=2, column=0, columnspan=5, sticky="w", pady=(3, 0))
         self.inputs.append(cleanup)
-        ttk.Label(options, text="备份目录留空时使用各 PDF 旁的 _backup；没有目录 JSON 时，可先在上方生成并校对。",
+        ttk.Label(options, text="备份目录留空时使用各 PDF 旁的 _backup；没有目录 JSON 时，可切换目录工作台生成并校对。",
                   wraplength=1020).grid(row=3, column=0, columnspan=5, sticky="w", pady=(3, 0))
 
         actions = ttk.Frame(outer)
@@ -290,35 +282,7 @@ class BookmarkWindow:
 
     def _build_menus(self):
         self.menu_bar = tk.Menu(self.root, tearoff=False)
-        self.file_menu = tk.Menu(self.menu_bar, tearoff=False, postcommand=self._update_file_menu)
-        self.file_menu.add_command(label="选择 PDF…", command=lambda: self._menu_source("single", self._choose_pdf))
-        self.file_menu.add_command(label="选择目录 JSON…", command=lambda: self._menu_source("single", self._choose_toc))
-        self.file_menu.add_command(label="选择文件夹…", command=lambda: self._menu_source("batch", self._choose_folder))
-        self.file_menu.add_command(label="添加多个 PDF / JSON…", command=lambda: self._menu_source(None, self._choose_files))
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="生成 / 编辑目录…", command=self._open_editor)
-        self.file_menu.add_command(label="暂存校对草稿", command=lambda: self._editor_action("save_draft"),
-                                    accelerator="Ctrl+S")
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="退出", command=self._close)
-        self.menu_bar.add_cascade(label="文件", menu=self.file_menu)
         self.edit_menu = tk.Menu(self.menu_bar, tearoff=False, postcommand=self._update_edit_menu)
-        self.edit_menu.add_command(label="选中全部", command=lambda: self._edit_action("select_all"), accelerator="Ctrl+A")
-        self.edit_menu.add_command(label="清除选中", command=lambda: self._edit_action("clear"))
-        self.edit_menu.add_command(label="删除 / 移除所选", command=lambda: self._edit_action("delete"), accelerator="Delete")
-        self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="展开所选或全部目录", command=lambda: self._edit_action("expand"), accelerator="+")
-        self.edit_menu.add_command(label="折叠所选或全部目录", command=lambda: self._edit_action("collapse"), accelerator="−")
-        self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="撤销目录修改", command=lambda: self._editor_action("undo"), accelerator="Ctrl+Z")
-        self.edit_menu.add_command(label="重做目录修改", command=lambda: self._editor_action("redo"), accelerator="Ctrl+Y")
-        self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="查找目录…", command=lambda: self._editor_action("focus_search"), accelerator="Ctrl+F")
-        self.review_menu = tk.Menu(self.edit_menu, tearoff=False)
-        self.review_menu.add_command(label="编辑所选标题…", command=lambda: self._editor_action("_edit_title_shortcut"), accelerator="F2")
-        self.review_menu.add_command(label="确认所选并下一项", command=lambda: self._editor_action("confirm_selected"), accelerator="Enter")
-        self.review_menu.add_command(label="下一待核对", command=lambda: self._editor_action("next_pending"))
-        self.edit_menu.add_cascade(label="目录校对", menu=self.review_menu)
         self.menu_bar.add_cascade(label="编辑", menu=self.edit_menu)
         self.view_menu = tk.Menu(self.menu_bar, tearoff=False, postcommand=self._update_view_menu)
         self.theme_menu = tk.Menu(self.view_menu, tearoff=False)
@@ -328,18 +292,11 @@ class BookmarkWindow:
         self.view_menu.add_checkbutton(label="专注模式", variable=self._view_focus_mode,
                                        command=self._set_active_focus_mode)
         self.view_menu.add_command(label="恢复本页默认布局", command=self._reset_active_layout)
-        self.view_menu.add_command(label="展开 / 收起写入设置", command=self._menu_write_options)
-        self.view_menu.add_separator()
-        self.view_menu.add_command(label="主界面 · 预览与写入", command=lambda: self._select_workspace(self.main_page))
-        self.view_menu.add_command(label="目录工作台 · 生成与编辑", command=lambda: self._select_workspace(self.editor_page))
-        self.view_menu.add_command(label="切换工作页", command=self._switch_workspace, accelerator="Ctrl+Tab / Ctrl+Shift+Tab")
-        self.view_menu.add_separator()
-        self.view_menu.add_command(label="跳到 PDF 页…", command=lambda: self._editor_action("focus_page"), accelerator="Ctrl+L")
         self.menu_bar.add_cascade(label="视图", menu=self.view_menu)
         self.help_menu = tk.Menu(self.menu_bar, tearoff=False)
         self.help_menu.add_command(label="操作说明与快捷键…", command=self._show_help, accelerator="F1")
         self.help_menu.add_separator()
-        self.help_menu.add_command(label="帮助 / 更新", command=self._show_updates)
+        self.help_menu.add_command(label="版本与更新…", command=self._show_updates)
         self.menu_bar.add_cascade(label="帮助", menu=self.help_menu)
         self.root.configure(menu=self.menu_bar)
 
@@ -351,14 +308,6 @@ class BookmarkWindow:
 
     def _workspace_busy(self):
         return self.busy or (self.editor is not None and not self.editor.closed and self.editor.busy)
-
-    def _update_file_menu(self):
-        state = "disabled" if self.closed or self._workspace_busy() else "normal"
-        for label in ("选择 PDF…", "选择目录 JSON…", "选择文件夹…", "添加多个 PDF / JSON…", "生成 / 编辑目录…"):
-            self.file_menu.entryconfigure(label, state=state)
-        editor = self._active_editor()
-        self.file_menu.entryconfigure("暂存校对草稿", state=("normal" if state == "normal"
-            and editor is not None and editor.draft is not None else "disabled"))
 
     def _editor_action(self, action):
         editor = self._active_editor()
@@ -402,18 +351,6 @@ class BookmarkWindow:
             show_help(self.root, self.theme.get())
         return "break"
 
-    def _menu_source(self, mode, command):
-        if self._workspace_busy() or self.closed:
-            return
-        if command():
-            if mode is not None:
-                self.mode.set(mode)
-            self.workspace_tabs.select(self.main_page)
-
-    def _menu_write_options(self):
-        self.workspace_tabs.select(self.main_page)
-        self._toggle_write_options()
-
     def _edit_context(self):
         focus = self.root.focus_get()
         if (self.workspace_tabs.select() == str(self.editor_page)
@@ -425,19 +362,34 @@ class BookmarkWindow:
         return None
 
     def _update_edit_menu(self):
+        self.edit_menu.delete(0, "end")
+        editor = self._active_editor()
         context = self._edit_context()
         enabled = context is not None and not self._workspace_busy() and not context.closed
-        for index in (0, 1, 2):
-            self.edit_menu.entryconfigure(index, state="normal" if enabled else "disabled")
-        for index in (4, 5):
-            self.edit_menu.entryconfigure(index, state="normal" if enabled and context is self.editor else "disabled")
-        editor = self._active_editor()
+        for label, action, key in (("选中全部", "select_all", "Ctrl+A"),
+                                   ("清除选中", "clear", ""),
+                                   ("删除所选目录项" if editor else "移除所选（保留文件）", "delete", "Delete")):
+            if editor:
+                key = self.shortcut_profile.key({"select_all": "select_all", "clear": "clear", "delete": "delete"}[action])
+            self.edit_menu.add_command(label=label, command=lambda action=action: self._edit_action(action),
+                                       accelerator=key, state="normal" if enabled else "disabled")
+        if editor is None:
+            return
         available = editor is not None and not self.closed and not self._workspace_busy()
-        for label in ("撤销目录修改", "重做目录修改", "目录校对"):
-            self.edit_menu.entryconfigure(label, state="normal" if available and editor.draft is not None else "disabled")
-        self.edit_menu.entryconfigure("查找目录…", state="normal" if available else "disabled")
-        for label in ("编辑所选标题…", "确认所选并下一项"):
-            self.review_menu.entryconfigure(label, state="normal" if available and editor.tree.selection() else "disabled")
+        self.edit_menu.add_separator()
+        for label, action in (("撤销目录修改", "undo"), ("重做目录修改", "redo")):
+            self.edit_menu.add_command(label=label, command=lambda action=action: self._editor_action(action),
+                                       accelerator=self.shortcut_profile.key(action),
+                                       state="normal" if available and editor.draft is not None else "disabled")
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label="查找目录…", command=lambda: self._editor_action("focus_search"),
+                                   accelerator=self.shortcut_profile.key("find"), state="normal" if available else "disabled")
+
+    def _set_update_offer(self, offer):
+        label = "版本与更新…"
+        if offer is not None:
+            label += f"（发现 v{offer.version}）"
+        self.help_menu.entryconfigure(2, label=label)
 
     def _edit_action(self, action):
         context = self._edit_context()
@@ -485,10 +437,6 @@ class BookmarkWindow:
 
     def _update_view_menu(self):
         self._view_focus_mode.set(self.focus_mode.get())
-        state = "disabled" if self.closed or self._workspace_busy() else "normal"
-        for label in ("主界面 · 预览与写入", "目录工作台 · 生成与编辑", "切换工作页"):
-            self.view_menu.entryconfigure(label, state=state)
-        self.view_menu.entryconfigure("跳到 PDF 页…", state=state if self._active_editor() else "disabled")
 
     def _set_active_focus_mode(self):
         self.focus_mode.set(self._view_focus_mode.get())
@@ -803,6 +751,10 @@ class BookmarkWindow:
             self._save_settings()
         except OSError as error:
             messagebox.showwarning("设置未保存", f"无法保存目录工作台设置：{error}", parent=self.root)
+
+    def _save_custom_shortcuts(self, overrides):
+        save_settings({"editor_shortcuts": overrides}, self.settings_path)
+        self.editor_settings["editor_shortcuts"] = dict(overrides)
 
     def _editor_saved(self, pdf, toc):
         self.pending_editor_saves.append((Path(pdf), Path(toc)))
@@ -1455,6 +1407,9 @@ class BookmarkWindow:
         for sequence, callback in self._shortcut_bindings:
             self.root.unbind(sequence, callback)
         self._shortcut_bindings.clear()
+        self.shortcut_profile.close()
+        if getattr(self.root, "_pdf_shortcut_profile", None) is self.shortcut_profile:
+            delattr(self.root, "_pdf_shortcut_profile")
         self.titlebar_pin.close()
         for memory in self._layout_memories.values():
             memory.close()

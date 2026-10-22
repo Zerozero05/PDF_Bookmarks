@@ -168,28 +168,58 @@ class MainShortcutsPreviewTests(unittest.TestCase):
         self.assertEqual(len(self.main.items), 3)
         self.assertTrue(all(item["checked"] for item in self.main.items.values()))
 
-    def test_cancelled_menu_picker_preserves_source_plans_and_removed_set(self):
+    def pdf_browse_button(self):
+        source = self.main.source_tabs.nametowidget(self.main.source_tabs.tabs()[0])
+        return next(widget for widget in source.winfo_children()
+                    if isinstance(widget, ttk.Button) and widget.grid_info().get("row") == 0)
+
+    def test_cancelled_visible_picker_preserves_source_plans_and_removed_set(self):
         ids = self.load()
+        self.main.source_tabs.select(0)
+        self.root.update()
         self.main.file_tree.selection_set(ids[1])
         self.main._remove_selected_files()
+        self.assertTrue(self.main._removed_files)
         before = (self.main.mode.get(), list(self.main.plans), set(self.main._removed_files),
                   self.main.workspace_tabs.select(), list(self.main.items))
         with patch("bookmarks_gui.filedialog.askopenfilename", return_value="") as picker:
             try:
-                self.main.file_menu.invoke("选择 PDF…")
+                self.pdf_browse_button().invoke()
+                picker.assert_called_once()
             finally:
                 picker.reset_mock()
         self.assertEqual((self.main.mode.get(), self.main.plans, self.main._removed_files,
                           self.main.workspace_tabs.select(), list(self.main.items)), before)
 
-    def test_successful_menu_picker_switches_source_and_previews_chosen_file(self):
+    def test_cancelled_folder_picker_preserves_ready_plans_and_removed_files(self):
+        ids = self.load(batch=True)
+        self.main.file_tree.selection_set(ids[1])
+        self.main._remove_selected_files()
+        self.assertEqual(len(self.main.plans), 2)
+        self.assertTrue(self.main._removed_files)
+        before = (self.main.mode.get(), list(self.main.plans), set(self.main._removed_files),
+                  self.main.workspace_tabs.select(), list(self.main.items))
+        source = self.main.source_tabs.nametowidget(self.main.source_tabs.tabs()[1])
+        browse = next(widget for widget in source.winfo_children()
+                      if isinstance(widget, ttk.Button) and widget.grid_info().get("row") == 0)
+        self.assertTrue(browse.winfo_ismapped())
+        with patch("bookmarks_gui.filedialog.askdirectory", return_value="") as picker:
+            browse.invoke()
+            picker.assert_called_once()
+        self.assertEqual((self.main.mode.get(), self.main.plans, self.main._removed_files,
+                          self.main.workspace_tabs.select(), list(self.main.items)), before)
+
+    def test_visible_picker_changes_source_and_previews_chosen_file(self):
         ids = self.load()
+        self.main.source_tabs.select(0)
+        self.root.update()
         self.main.file_tree.selection_set(ids[1])
         self.main._remove_selected_files()
         self.assertTrue(self.main._removed_files)
         with patch("bookmarks_gui.filedialog.askopenfilename", return_value=str(self.pdfs[1])) as picker:
             try:
-                self.main.file_menu.invoke("选择 PDF…")
+                self.pdf_browse_button().invoke()
+                picker.assert_called_once()
             finally:
                 picker.reset_mock()
         self.assertEqual(self.main.mode.get(), "single")

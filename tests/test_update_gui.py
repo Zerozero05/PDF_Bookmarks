@@ -36,7 +36,7 @@ class UpdateGuiTests(unittest.TestCase):
         self.window._show_updates()
         dialog = self.window.updates
         self.root.update_idletasks()
-        self.assertEqual(dialog.window.title(), "PDF_Bookmarks · 帮助 / 更新")
+        self.assertEqual(dialog.window.title(), "PDF_Bookmarks · 版本与更新")
         self.assertNotEqual(dialog.controller.executor, self.window.executor)
         self.assertFalse(self.window.busy)
         self.assertEqual(str(dialog.download_button["state"]), "disabled")
@@ -82,7 +82,23 @@ class UpdateGuiTests(unittest.TestCase):
         self.assertEqual(dialog.progress.get(), 100)
         self.assertEqual(str(dialog.install_button["state"]), "normal")
         self.assertIn("Test release notes", dialog.notes.get("1.0", "end"))
-        self.assertIn("1.5.1", self.window.update_button["text"])
+        self.assertEqual(self.window.help_menu.entrycget(2, "label"), "版本与更新…（发现 v1.5.1）")
+        self.assertFalse(hasattr(self.window, "update_button"))
+
+    def test_latest_version_result_clears_previous_help_menu_offer(self):
+        self.window._show_updates()
+        dialog = self.window.updates
+        offer = UpdateOffer("1.5.1", {}, {"file": "program.exe", "size": 1024},
+                            "Test release notes", "https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.5.1")
+        dialog.controller.events.put(("checked", {"offer": offer, "automatic": True}))
+        self.root.after_cancel(dialog._poll_after)
+        dialog._poll()
+        self.assertIn("v1.5.1", self.window.help_menu.entrycget(2, "label"))
+        dialog.controller.events.put(("checked", {"offer": None, "automatic": False}))
+        self.root.after_cancel(dialog._poll_after)
+        dialog._poll()
+        self.assertEqual(self.window.help_menu.entrycget(2, "label"), "版本与更新…")
+        self.assertFalse(self.window.busy)
 
     def test_failed_config_save_refuses_installation(self):
         self.window._show_updates()

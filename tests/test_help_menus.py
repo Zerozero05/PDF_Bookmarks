@@ -37,7 +37,7 @@ class HelpMenuTests(unittest.TestCase):
         dialog.close()
         self.assertIsNone(self.main.updates)
         with patch.object(self.main, "enable_updates") as updates:
-            self.main.help_menu.invoke("帮助 / 更新")
+            self.main.help_menu.invoke("版本与更新…")
             updates.assert_called_once()
             updates.return_value.show.assert_called_once()
 
@@ -53,32 +53,60 @@ class HelpMenuTests(unittest.TestCase):
         self.assertTrue(dialog.window.winfo_exists())
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.main_page))
 
-    def test_context_menu_states_keep_existing_entrypoints_and_enable_only_active_editor_commands(self):
-        self.main._update_file_menu()
+    @staticmethod
+    def menu_labels(menu):
+        return [menu.entrycget(index, "label") for index in range(menu.index("end") + 1)
+                if menu.type(index) != "separator"]
+
+    def test_top_menus_have_only_approved_entries_and_show_active_page_actions(self):
+        self.assertEqual(self.menu_labels(self.main.menu_bar), ["编辑", "视图", "帮助"])
+        self.assertEqual(self.menu_labels(self.main.view_menu), ["外观", "专注模式", "恢复本页默认布局"])
+        self.assertEqual(self.menu_labels(self.main.help_menu), ["操作说明与快捷键…", "版本与更新…"])
+        self.assertFalse(hasattr(self.main, "file_menu"))
+        self.assertFalse(hasattr(self.main, "review_menu"))
         self.main._update_edit_menu()
-        self.main._update_view_menu()
-        for label in ("选择 PDF…", "选择目录 JSON…", "选择文件夹…", "添加多个 PDF / JSON…", "生成 / 编辑目录…", "退出"):
-            self.assertEqual(self.main.file_menu.entrycget(label, "state"), "normal")
-        for menu, label in ((self.main.file_menu, "暂存校对草稿"), (self.main.edit_menu, "查找目录…"),
-                            (self.main.view_menu, "跳到 PDF 页…")):
-            self.assertEqual(menu.entrycget(label, "state"), "disabled")
+        self.assertEqual(self.menu_labels(self.main.edit_menu),
+                         ["选中全部", "清除选中", "移除所选（保留文件）"])
         editor = self.open_editor()
+        self.main._update_edit_menu()
+        self.assertEqual(self.menu_labels(self.main.edit_menu),
+                         ["选中全部", "清除选中", "删除所选目录项",
+                          "撤销目录修改", "重做目录修改", "查找目录…"])
+        self.assertEqual(self.main.edit_menu.entrycget("撤销目录修改", "state"), "disabled")
+        self.assertEqual(self.main.edit_menu.entrycget("重做目录修改", "state"), "disabled")
+        self.assertEqual(self.main.edit_menu.entrycget("查找目录…", "state"), "normal")
+        self.main._select_workspace(self.main.main_page)
+        self.main._update_edit_menu()
+        self.assertEqual(self.menu_labels(self.main.edit_menu),
+                         ["选中全部", "清除选中", "移除所选（保留文件）"])
+        self.assertFalse(editor.closed)
+
+    def test_context_menu_states_keep_existing_controls_and_busy_guards(self):
+        ids = self.load()
+        self.focus(self.main.file_tree)
+        self.main._update_edit_menu()
+        self.assertEqual(self.main.edit_menu.entrycget("选中全部", "state"), "normal")
+        self.main.file_tree.focus(ids[0])
+        editor = self.open_editor()
+        self.focus(editor.tree)
         self.main._update_edit_menu()
         self.main._update_view_menu()
         self.assertEqual(self.main.edit_menu.entrycget("查找目录…", "state"), "normal")
-        self.assertEqual(self.main.view_menu.entrycget("跳到 PDF 页…", "state"), "normal")
-        with patch.object(editor, "focus_search") as search, patch.object(editor, "focus_page") as page:
+        with patch.object(editor, "focus_search") as search:
             self.main.edit_menu.invoke("查找目录…")
-            self.main.view_menu.invoke("跳到 PDF 页…")
             search.assert_called_once()
-            page.assert_called_once()
+        self.focus(editor.tree)
+        editor.tree.event_generate("<Control-l>")
+        self.root.update()
+        self.assertEqual(str(self.root.focus_get().cget("textvariable")), str(editor.preview_page))
         editor._set_busy(True)
-        self.main._update_file_menu()
         self.main._update_edit_menu()
         self.main._update_view_menu()
-        self.assertEqual(self.main.file_menu.entrycget("选择 PDF…", "state"), "disabled")
+        self.assertTrue(all(str(widget.cget("state")) == "disabled" for widget in editor._controls))
+        self.assertEqual(self.main.edit_menu.entrycget("选中全部", "state"), "disabled")
         self.assertEqual(self.main.edit_menu.entrycget("查找目录…", "state"), "disabled")
-        self.assertEqual(self.main.view_menu.entrycget("切换工作页", "state"), "disabled")
+        self.main._switch_workspace()
+        self.assertEqual(self.main.workspace_tabs.select(), str(self.main.editor_page))
         with patch.object(editor, "focus_search") as search:
             self.main._editor_action("focus_search")
             search.assert_not_called()
@@ -173,21 +201,41 @@ class HelpMenuTests(unittest.TestCase):
         self.assertEqual(self.main.workspace_tabs.select(), str(self.main.editor_page))
         self.assertEqual(self.main.view_tabs.select(), before)
 
-    def test_menu_confirmation_title_history_and_draft_commands_reuse_editor_methods(self):
+    def test_history_menus_and_local_review_controls_keep_original_operations(self):
         ids = self.load()
         self.main.file_tree.focus(ids[0])
         editor = self.open_editor()
-        self.main._update_file_menu()
         self.main._update_edit_menu()
-        for label, method, menu in (("暂存校对草稿", "save_draft", self.main.file_menu),
-                                    ("撤销目录修改", "undo", self.main.edit_menu),
-                                    ("重做目录修改", "redo", self.main.edit_menu),
-                                    ("编辑所选标题…", "_edit_title_shortcut", self.main.review_menu),
-                                    ("确认所选并下一项", "confirm_selected", self.main.review_menu),
-                                    ("下一待核对", "next_pending", self.main.review_menu)):
+        for label, method in (("撤销目录修改", "undo"), ("重做目录修改", "redo")):
             with self.subTest(label=label), patch.object(editor, method) as operation:
-                menu.invoke(label)
+                self.main.edit_menu.invoke(label)
                 operation.assert_called_once()
+        editor.draft_menu.invoke("暂存草稿")
+        self.assertIn("草稿已暂存", editor.draft_status.get())
+        self.assertTrue(editor.store.exists(editor.draft.pdf_path))
+        self.focus(editor.tree)
+        editor.tree.event_generate("<Control-s>")
+        self.root.update()
+        self.assertIn("草稿已暂存", editor.draft_status.get())
+        editor.tree.event_generate("<F2>")
+        self.root.update()
+        self.assertIsNotNone(editor._inline)
+        self.assertEqual(editor._inline.get(), editor.draft.entries[0].title)
+        editor._close_inline()
+        editor.confirmed.set(False)
+        editor.update_entry()
+        self.focus(editor.tree)
+        editor.tree.event_generate("<Return>")
+        self.root.update()
+        self.assertTrue(editor.draft.entries[0].confirmed)
+        next_pending = next(control for control in editor._controls
+                            if "text" in control.keys() and control.cget("text") == "下一待核对")
+        editor.confirmed.set(False)
+        editor.update_entry()
+        editor.clear_selection()
+        next_pending.invoke()
+        self.root.update()
+        self.assertEqual(editor.tree.selection(), ("0",))
 
 
 class StandaloneHelpTests(unittest.TestCase):

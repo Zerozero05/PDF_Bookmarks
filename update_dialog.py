@@ -61,7 +61,7 @@ class UpdateDialog:
             self.window.lift()
             return
         self.window = tk.Toplevel(self.root)
-        self.window.title("PDF_Bookmarks · 帮助 / 更新")
+        self.window.title("PDF_Bookmarks · 版本与更新")
         self.window.geometry("660x490")
         self.window.minsize(520, 400)
         self.window.transient(self.root)
@@ -141,8 +141,8 @@ class UpdateDialog:
                     self.size.set(f"已下载 {done / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB")
                 elif kind == "checked":
                     offer = value["offer"]
+                    self.owner._set_update_offer(offer)
                     if offer:
-                        self.owner.update_button.configure(text=f"发现 v{offer.version}")
                         self.show()
                     else:
                         self.status.set("当前已是最新正式版本。")

@@ -92,15 +92,24 @@ class DirectoryWorkbenchTests(unittest.TestCase):
             result.extend(self.visible_texts(child))
         return result
 
-    def test_main_has_one_visible_directory_entry(self):
+    def test_editor_tab_replaces_duplicate_page_header_entry(self):
         self.main = bookmarks_gui.BookmarkWindow(self.root, settings_path=self.folder / "settings.json")
         self.root.geometry("1100x860+32000+32000")
         self.root.update()
         texts = self.visible_texts(self.root)
-        self.assertEqual(texts.count("生成 / 编辑目录…"), 1)
+        self.assertNotIn("生成 / 编辑目录…", texts)
         self.assertNotIn("生成目录 JSON…", texts)
         self.assertNotIn("编辑目录 JSON…", texts)
-        self.assertEqual(self.main.directory_button.cget("text"), "生成 / 编辑目录…")
+        self.assertNotIn("PDF_Bookmarks", texts)
+        self.assertFalse(hasattr(self.main, "directory_button"))
+        self.assertEqual([self.main.workspace_tabs.tab(tab, "text")
+                          for tab in self.main.workspace_tabs.tabs()],
+                         ["主界面 · 预览与写入", "目录工作台 · 生成与编辑"])
+        self.assertIsNone(self.main.editor)
+        self.main.workspace_tabs.select(self.main.editor_page)
+        self.root.update()
+        self.assertIsNotNone(self.main.editor)
+        self.assertTrue(self.main.editor.window.winfo_ismapped())
 
     def test_empty_main_entry_opens_workbench_without_file_dialog(self):
         self.main = bookmarks_gui.BookmarkWindow(self.root, settings_path=self.folder / "settings.json")

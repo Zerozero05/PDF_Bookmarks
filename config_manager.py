@@ -19,6 +19,8 @@ import tempfile
 import threading
 import uuid
 
+from shortcut_keys import sanitize_overrides
+
 
 CONFIG_SCHEMA = 1
 MIGRATIONS = {}
@@ -46,6 +48,7 @@ DEFAULT_CONFIG = {
     "file_column_widths": {},
     "bookmark_column_widths": {},
     "editor_column_widths": {},
+    "editor_shortcuts": {},
     "toc_save_mode": "source",
     "toc_save_dir": "",
     "auto_check_update": True,
@@ -96,6 +99,9 @@ def sanitize_settings(settings) -> dict:
         if name == "last_update_check":
             if _valid_timestamp(value):
                 result[name] = value
+            continue
+        if name == "editor_shortcuts":
+            result[name] = sanitize_overrides(value)
             continue
         if type(value) is not type(default):
             continue

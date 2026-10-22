@@ -19,6 +19,7 @@ from ui_layout import ColumnMemory, PaneMemory
 from ui_theme import add_tooltip, apply_app_icon, refresh_theme_widgets
 from editor_session import DraftStore, UndoHistory, restore_state, snapshot_state
 from toc_generation import DraftEntry, _page_regions, apply_mapping, generate_toc, load_draft, save_toc, section_titles
+from shortcut_keys import COMMANDS, ShortcutProfile
 
 
 SECTION_STYLES = {"章.节（1.1 标题）": "chapter_section", "每章节号（1. 标题）": "section",
@@ -157,7 +158,17 @@ class TocEditor:
         self.save_mode = tk.StringVar(value=self.editor_settings.get("toc_save_mode", "source"))
         self.save_dir = tk.StringVar(value=self.editor_settings.get("toc_save_dir", ""))
         self.save_location = tk.StringVar(value="保存位置：选择 PDF 后显示。")
+        owner = self.window.winfo_toplevel()
+        self.shortcut_profile = getattr(owner, "_pdf_shortcut_profile", None)
+        self._owns_shortcut_profile = self.shortcut_profile is None
+        if self._owns_shortcut_profile:
+            self.shortcut_profile = ShortcutProfile(self.editor_settings.get("editor_shortcuts"),
+                save=self._save_custom_shortcuts if on_settings_changed is not None else None)
+            owner._pdf_shortcut_profile = self.shortcut_profile
+        self._command_bindings = []
         self._build()
+        self._refresh_shortcuts()
+        self.shortcut_profile.subscribe(self._refresh_shortcuts)
         self._pane_memory = PaneMemory(self.body, ratio=self.editor_settings.get("editor_pane_ratio", 0))
         self._column_memory = ColumnMemory(self.tree, widths=self.editor_settings.get("editor_column_widths", {}))
         self._apply_focus_mode(persist=False)
@@ -350,18 +361,7 @@ class TocEditor:
         self.tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         self.tree.bind("<<TreeviewSelect>>", self._selected)
         self.tree.bind("<KeyPress>", self._level_key)
-        self.tree.bind("<Return>", self.confirm_selected)
-        self.tree.bind("<KP_Enter>", self.confirm_selected)
-        self.tree.bind("<Delete>", self.delete_entry)
-        self.tree.bind("<Control-a>", self.select_all_entries)
-        self.tree.bind("<Control-A>", self.select_all_entries)
-        self.tree.bind("<Escape>", self.clear_selection)
-        for sequence in ("<plus>", "<KP_Add>"):
-            self.tree.bind(sequence, lambda event=None: self.set_selected_expanded(True))
-        for sequence in ("<minus>", "<KP_Subtract>"):
-            self.tree.bind(sequence, lambda event=None: self.set_selected_expanded(False))
         self.tree.bind("<Double-1>", self._inline_edit)
-        self.tree.bind("<F2>", self._edit_title_shortcut)
         self.tree.bind("<ButtonPress-1>", self._drag_start)
         self.tree.bind("<B1-Motion>", self._drag_motion)
         self.tree.bind("<ButtonRelease-1>", self._drag_end)
@@ -370,6 +370,7 @@ class TocEditor:
         self.empty_directory.place(relx=0.5, rely=0.35, anchor="center")
         tree_hint = ttk.Label(left, text="Enter 确认 · Delete 删除 · +/- 展开/折叠 · 1–9 改层级",
                               wraplength=470, style="Muted.TLabel")
+        self.shortcut_hint = tree_hint
         tree_hint.pack(fill="x", pady=(3, 0))
 
         edit = ttk.Frame(left, padding=(0, 6, 0, 0))
@@ -401,7 +402,7 @@ class TocEditor:
         edit_actions = ttk.Frame(edit)
         edit_actions.grid(row=4, column=0, columnspan=4, sticky="ew")
         self._button(edit_actions, "更新选中项", self.update_entry).pack(side="left", padx=2)
-        entry_button, self.entry_menu = self._menu_button(edit_actions, "目录操作", "Ctrl+A 选中当前筛选项；Esc 清除选中。Delete 删除；+ / - 展开/折叠所选，未选时作用于所有层级。Ctrl/Shift 多选；1–9 或拖动层级栏调整；双击编辑。")
+        entry_button, self.entry_menu = self._menu_button(edit_actions, "目录操作", "F1 查看或修改快捷键。Ctrl/Shift 多选；1–9 或拖动层级栏调整；双击编辑。")
         entry_button.pack(side="left", padx=3)
         self.entry_menu.add_command(label="全选当前目录项", command=self.select_all_entries, accelerator="Ctrl+A")
         self.entry_menu.add_command(label="清除选中", command=self.clear_selection, accelerator="Esc")
@@ -530,20 +531,63 @@ class TocEditor:
         if not self.embedded:
             callback = target.bind("<F1>", self._show_help, add="+")
             self._shortcut_bindings.append((target, "<F1>", callback))
-        for sequence, operation in (("<Control-z>", self.undo), ("<Control-y>", self.redo),
-                                    ("<Control-s>", self.save_draft), ("<Control-f>", self.focus_search),
-                                    ("<Control-l>", self.focus_page)):
-            def shortcut(event, operation=operation,
-                         navigation=sequence in {"<Control-f>", "<Control-l>"}):
-                if self.closed:
-                    return
-                if self.embedded and (not self.window.winfo_ismapped()
-                        or not navigation and not str(event.widget).startswith(str(self.window) + ".")):
-                    return
-                operation()
-                return "break"
-            callback = target.bind(sequence, shortcut, add="+")
-            self._shortcut_bindings.append((target, sequence, callback))
+
+    def _save_custom_shortcuts(self, overrides):
+        if self.on_settings_changed is not None:
+            self.on_settings_changed({"editor_shortcuts": dict(overrides)})
+        self.editor_settings["editor_shortcuts"] = dict(overrides)
+
+    def _clear_command_bindings(self):
+        for widget, sequence, callback in self._command_bindings:
+            widget.unbind(sequence, callback)
+        self._command_bindings.clear()
+
+    def _refresh_shortcuts(self):
+        self._clear_command_bindings()
+        for action in COMMANDS:
+            widget = self.window.winfo_toplevel() if action in {"undo", "redo", "save_draft", "find", "page"} else self.tree
+            for sequence in self.shortcut_profile.sequences(action):
+                callback = widget.bind(sequence, lambda event=None, action=action: self._command_key(action, event), add="+")
+                self._command_bindings.append((widget, sequence, callback))
+        menu_commands = {"全选当前目录项": "select_all", "清除选中": "clear", "添加": "add",
+                         "删除所选目录项": "delete", "上移": "move_up", "下移": "move_down",
+                         "展开所选目录项": "expand", "折叠所选目录项": "collapse"}
+        for label, action in menu_commands.items():
+            self.entry_menu.entryconfigure(label, accelerator=self.shortcut_profile.key(action))
+        for label, action in {"确认所选并下一项": "confirm", "编辑标题": "edit_title",
+                              "删除所选目录项": "delete", "上移": "move_up", "下移": "move_down",
+                              "全选当前目录项": "select_all", "清除选中": "clear",
+                              "展开所选或全部目录": "expand", "折叠所选或全部目录": "collapse"}.items():
+            self.context_menu.entryconfigure(label, accelerator=self.shortcut_profile.key(action))
+        self.draft_menu.entryconfigure("暂存草稿", accelerator=self.shortcut_profile.key("save_draft"))
+        self.shortcut_hint.configure(text=(f"{self.shortcut_profile.key('confirm')} 确认 · "
+            f"{self.shortcut_profile.key('delete')} 删除 · F1 查看/修改快捷键 · 1–9 改层级"))
+
+    def _command_key(self, action, event):
+        if self.closed:
+            return
+        global_action = action in {"undo", "redo", "save_draft", "find", "page"}
+        event_widget = getattr(event, "widget", self.tree)
+        if self.embedded and (not self.window.winfo_ismapped()
+                or global_action and action not in {"find", "page"}
+                and not str(event_widget).startswith(str(self.window) + ".")):
+            return
+        if not global_action and event_widget is not self.tree:
+            return
+        if self.busy or self.task_guard and self.task_guard():
+            return "break"
+        if not global_action and self.draft is None:
+            return "break"
+        operation = {"add": self.add_entry, "move_up": lambda: self.move_entry(-1),
+                     "move_down": lambda: self.move_entry(1), "edit_title": self._edit_title_shortcut,
+                     "confirm": self.confirm_selected, "delete": self.delete_entry,
+                     "select_all": self.select_all_entries, "clear": self.clear_selection,
+                     "expand": lambda: self.set_selected_expanded(True),
+                     "collapse": lambda: self.set_selected_expanded(False),
+                     "undo": self.undo, "redo": self.redo, "save_draft": self.save_draft,
+                     "find": self.focus_search, "page": self.focus_page}[action]
+        operation()
+        return "break"
 
     def _show_help(self, _event=None):
         from help_dialog import show_help
@@ -2126,6 +2170,13 @@ class TocEditor:
         for target, sequence, callback in self._shortcut_bindings:
             target.unbind(sequence, callback)
         self._shortcut_bindings.clear()
+        self.shortcut_profile.unsubscribe(self._refresh_shortcuts)
+        self._clear_command_bindings()
+        if self._owns_shortcut_profile:
+            self.shortcut_profile.close()
+            owner = self.window.winfo_toplevel()
+            if getattr(owner, "_pdf_shortcut_profile", None) is self.shortcut_profile:
+                delattr(owner, "_pdf_shortcut_profile")
         self._photo = None
         try:
             while True:

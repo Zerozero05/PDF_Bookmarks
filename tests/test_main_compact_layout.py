@@ -172,7 +172,7 @@ class MainCompactLayoutTests(unittest.TestCase):
                 if self.main._write_options_open != expanded:
                     self.main.write_options_button.invoke()
                 self.root.update()
-                visible = [self.main.directory_button, self.main.preview_button,
+                visible = [self.main.workspace_tabs, self.main.source_tabs, self.main.preview_button,
                            self.main.write_button, self.main.write_options_button]
                 if expanded:
                     visible.extend(widget for widget in self.main.inputs
