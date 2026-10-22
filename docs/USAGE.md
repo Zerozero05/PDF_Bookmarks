@@ -1,10 +1,10 @@
 # PDF_Bookmarks 完整使用说明
 
-本页说明 PDF_Bookmarks 的使用方式及两种GUI打包形式。当前稳定下载为 [v1.10.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.10.0)，源码正在准备 **v1.11.0 候选，待具体版本确认及正式门禁，尚未公开**。共享专注、分栏/列宽记忆、右键操作、F1说明及图标继续保留；正式下载以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)实际附件为准，全部历史版保留。首页见 [README](../README.md)，发布与命名见 [MAINTENANCE](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks 的使用方式及两种GUI打包形式。当前稳定下载为 [v1.11.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.11.0)，已完成正式发布与附件核验。共享专注、分栏/列宽记忆、右键操作、F1说明及图标继续保留；正式下载以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)实际附件为准，全部历史版保留。首页见 [README](../README.md)，发布与命名见 [MAINTENANCE](MAINTENANCE.md)。
 
-以下用法包含拟纳入 v1.11.0 的菜单精简和快捷键设置：顶部为“编辑 / 视图 / 帮助”，工作台从标签页进入，更新位于“帮助 → 版本与更新…”，F1 可设置常用工作台快捷键。旧发行版仍保留当时的文件菜单及页头按钮，下载不会因本文更新而替换。本页工作台快捷键按默认值说明；自定义后以 F1 表中显示的当前键位为准。
+以下用法对应 v1.11.0 的菜单精简和快捷键设置：顶部为“编辑 / 视图 / 帮助”，工作台从标签页进入，更新位于“帮助 → 版本与更新…”，F1 可设置常用工作台快捷键。旧发行版仍保留当时的文件菜单及页头按钮，下载不会因本文更新而替换。本页工作台快捷键按默认值说明；自定义后以 F1 表中显示的当前键位为准。
 
-当前 Windows 版：**v1.10.0**，以发行页实际附件为准。v1.4.1 增加的“写入成功后删除目录 JSON”仍为可选项，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级和 JSON 保存目录保留；目录工作台现位于主窗口的独立标签页，原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能继续可用。
+当前 Windows 版：**v1.11.0**，以发行页实际附件为准。v1.4.1 增加的“写入成功后删除目录 JSON”仍为可选项，默认关闭，并记住上次选择。v1.4 的自动编辑、多选改层级和 JSON 保存目录保留；目录工作台现位于主窗口的独立标签页，原有拖放、预览、写入、批量、备份和茉莉花缓存清理功能继续可用。
 
 v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处理列表、预览后的书签树、目标页图片和处理记录现在能够正常显示和点击。关闭旧程序后换用新版 EXE 即可，原有设置自动保留；PDF 写入、备份、缓存清理和命令行逻辑没有改动。
 
@@ -18,11 +18,11 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 | 下载文件 | 打开方式 |
 | --- | --- |
-| [PDF_Bookmarks_v1.10.0_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
-| [PDF_Bookmarks_v1.10.0_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe` |
-| [PDF_Bookmarks_v1.10.0_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [PDF_Bookmarks_v1.11.0_win_x64.exe](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64.exe) | 单文件版，直接运行；每次启动会临时解包运行库 |
+| [PDF_Bookmarks_v1.11.0_win_x64_portable.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_portable.zip) | 便携文件夹版，完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe` |
+| [PDF_Bookmarks_v1.11.0_win_x64_full.zip](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_full.zip) | 完整包，含源码、CLI、说明和单文件 GUI；解压后运行 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
-便携版须让 EXE、`_internal`、`package-manifest.json` 与其余文件保留在同一文件夹内；移动时移动整个 `PDF_Bookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。下载文件使用 `SHA256SUMS.txt` 校验；便携 ZIP 另附 `PDF_Bookmarks_v1.10.0_win_x64_portable.zip.sha256`。`update-manifest.json` 供程序检查更新使用。原设置路径保持不变；历史 v1.4.1 的 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。
+便携版须让 EXE、`_internal`、`package-manifest.json` 与其余文件保留在同一文件夹内；移动时移动整个 `PDF_Bookmarks` 文件夹。它省去每次启动的临时解包，功能与单文件版相同，不承诺每页 OCR 或 PDF 写入提速。完整 Windows ZIP 中的 GUI 仍是单文件版，与便携 ZIP 不同。下载文件使用 `SHA256SUMS.txt` 校验；便携 ZIP 另附 `PDF_Bookmarks_v1.11.0_win_x64_portable.zip.sha256`。`update-manifest.json` 供程序检查更新使用。原设置路径保持不变；历史 v1.4.1 的 ZIP 内部名称仍为 `ZoteroPDFBookmarks`。
 
 1. 从发布页下载所选程序，按上表打开。程序面向 Windows 10/11 x64。
 2. 找到需要添加或更新书签的 PDF，关闭这本 PDF 的阅读窗口。
@@ -72,7 +72,7 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 <a name="help-shortcuts"></a>
 
-### v1.11.0 候选：帮助、菜单与快捷键
+### v1.11.0：帮助、菜单与快捷键
 
 按 **F1**，或选择“帮助 → 操作说明与快捷键…”，打开本机说明窗口。“操作说明”介绍预览、校对和写入流程；“快捷键表”按作用区域列出操作，选中条目可在下方阅读完整说明。窗口可并排查看，Esc关闭；两页重复打开复用同一窗口。独立工作台也支持F1。“帮助 → 版本与更新…”提供原有版本、更新说明和下载入口。
 
@@ -88,7 +88,7 @@ v1.2.1 修复滚动区域背景框遮挡内容的问题：拖入文件后的处�
 
 <a name="keyboard-shortcuts-settings"></a>
 
-### v1.11.0 候选：自定义工作台快捷键
+### v1.11.0：自定义工作台快捷键
 
 在目录列表中，默认 **Ctrl+N** 添加目录项，**Alt+↑ / Alt+↓** 上移/下移；“目录操作”和相关右键命令标注对应键位。无 Insert 键的98键等键盘也可直接使用，新增操作无需 Fn 组合。它们只在目录列表获得焦点时生效，按原添加/移动规则检查未完成编辑、选择与层级，不截获标题、查找或页码输入中的按键。
 

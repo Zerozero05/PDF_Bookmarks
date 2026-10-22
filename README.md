@@ -2,22 +2,22 @@
 
 为普通 PDF 添加多级书签，可独立使用，也适配 Zotero 附件。支持导入目录 JSON，或从文字、扫描 PDF 识别目录，经预览与人工校对后写入，保持原 PDF 文件名和路径。
 
-当前稳定下载：**v1.10.0**。正在准备 **v1.11.0 候选，待具体版本确认及正式门禁，尚未公开**；下方下载仍指向稳定版。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
+当前稳定版：**v1.11.0**，已通过正式云端门禁并公开核验；下载见下方附件。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
 
-[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.10.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
+[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.11.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
 
 ## 选择下载方式
 
 | 下载 | 运行方式与区别 |
 | --- | --- |
-| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
-| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
-| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
-| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
+| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
+| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
+| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
 两种 GUI 功能相同，无需安装 Python，共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json` 及本机草稿。便携版主要省去启动解包，不保证 OCR 或 PDF 写入更快；“便携”指免安装，设置与草稿仍保存在当前电脑。
 
-下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.10.0/PDF_Bookmarks_v1.10.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
+下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.11.0/PDF_Bookmarks_v1.11.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
 
 ## 快速使用
 
@@ -26,7 +26,7 @@
 3. 点“1. 预览”，检查层级、标题与实际目标页；勾选要处理的 PDF，设置写入选项。
 4. 点“2. 写入勾选的 PDF”。更改输入或写入选项后须重新预览；完成后重新打开原文件检查书签。
 
-程序添加 PDF 内部书签，不插入正文目录页。按 **F1** 查看本机操作说明与快捷键表，本地优化版还可在表内修改常用工作台快捷键；按 Esc 关闭说明。多本配对规则与恢复方法见[完整使用说明](docs/USAGE.md)。
+程序添加 PDF 内部书签，不插入正文目录页。按 **F1** 查看本机操作说明与快捷键表，可在表内修改常用工作台快捷键；按 Esc 关闭说明。多本配对规则与恢复方法见[完整使用说明](docs/USAGE.md)。
 
 ### 在 Zotero 中使用
 
@@ -42,12 +42,12 @@
 | 功能 | 使用方式与保护 |
 | --- | --- |
 | 目录识别与编辑 | 文字提取、本地中英文 OCR；自动/单栏/双栏布局、逐页区域与栏线、三种节编号、人工确认及批量改层级 |
-| 校对与草稿 | 默认 Enter 确认并下一项、Ctrl+F 查找、F2 改标题、Ctrl+L 定位页码；本地优化版增加 Ctrl+N 添加及 Alt+↑/↓ 移动，15项常用工作台快捷键可在 F1 中自定义；保留筛选、目录树及80步撤销/重做，草稿与正式 JSON 分开，恢复前核对 PDF 身份 |
+| 校对与草稿 | 默认 Enter 确认并下一项、Ctrl+F 查找、F2 改标题、Ctrl+L 定位页码；v1.11.0 增加 Ctrl+N 添加及 Alt+↑/↓ 移动，15项常用工作台快捷键可在 F1 中自定义；保留筛选、目录树及80步撤销/重做，草稿与正式 JSON 分开，恢复前核对 PDF 身份 |
 | 目标页预览 | 滚轮、按钮及 Ctrl＋滚轮缩放 50%–300%，适合宽度/整页、翻页与原目录行定位；预览只读 |
 | 页码映射 | 固定偏移、分段映射或指定实际 PDF 页，支持多级书签 |
 | 拖放与批量 | 拖入 PDF、JSON 或文件夹，逐本预览、勾选和查看处理结果 |
 | 窗口与主题 | 两标签页共用窗口、置顶及专注状态，支持 Ctrl+Tab 往返；左上视图菜单选择三种外观、恢复默认分栏/列宽，PDF 页面图像保持原色 |
-| 帮助与菜单 | F1 打开本机非模态操作说明及分场景快捷键表；本地优化版只保留编辑/视图/帮助，文件选择在页面内完成，列表支持右键及键盘菜单 |
+| 帮助与菜单 | F1 打开本机非模态操作说明及分场景快捷键表；v1.11.0 只保留编辑/视图/帮助，文件选择在页面内完成，列表支持右键及键盘菜单 |
 | 原地写入 | 临时副本写入并校验后原子替换，保持原文件名与路径 |
 | 备份 | 默认开启；默认保存在各 PDF 旁的 `_backup`，可自选目录 |
 | 已有书签 | 默认跳过；明确选择替换时覆盖整棵原书签树 |
@@ -63,7 +63,7 @@
 
 | 版本／记录 | 日期 | 主要变更 |
 | --- | --- | --- |
-| v1.11.0（候选，待确认） | 2026-10-22 | 1、精简三菜单与重复页头，保留各功能的页面和局部入口。<br>2、Ctrl+N 添加、Alt+↑/↓ 移动，F1 可设置15项常用工作台快捷键并恢复默认。<br>3、修复帮助长详情挤出底栏；正式构建和发布仍待门禁。<br>[本次完整记录](CHANGELOG.md#v1-11-0) |
+| v1.11.0 | 2026-10-22 | 1、精简三菜单与重复页头，保留各功能的页面和局部入口。<br>2、Ctrl+N 添加、Alt+↑/↓ 移动，F1 可设置15项常用工作台快捷键并恢复默认。<br>3、修复帮助长详情挤出底栏；正式云端门禁及七附件核验通过。<br>[本次完整记录](CHANGELOG.md#v1-11-0) |
 | 目录快捷键设置（未发布） | 2026-10-22 | 1、目录列表新增 Ctrl+N 添加、Alt+↑/↓ 上移/下移，兼容无 Insert 键的键盘。<br>2、F1 快捷键表可修改15项常用工作台命令，并恢复所选或全部默认键位。<br>3、保存个人键位，拒绝冲突和保留组合，继续保护输入框编辑及原业务流程。<br>[本次完整记录](CHANGELOG.md#keyboard-shortcuts-2026-10-22) |
 | 菜单与页头精简（未发布） | 2026-10-22 | 1、顶部仅保留编辑、视图、帮助，按当前页显示适用编辑操作。<br>2、移除重复页头，通过标签页进入目录工作台，“版本与更新”集中到帮助菜单。<br>3、文件选择、草稿、目录校对、预览定位及原快捷键继续可用。<br>[本次完整记录](CHANGELOG.md#compact-menus-2026-10-22) |
 | v1.10.0 | 2026-10-22 | 1、统一两页专注状态，记忆并恢复分栏/列宽，精简工具分组与状态显示。<br>2、增加右键菜单、Ctrl+F/F2/Ctrl+L 及工作页切换，保留校对和忙碌保护。<br>3、F1 本机说明和21项快捷键表，采用精修图标 A，整理左上菜单。<br>[本次完整记录](CHANGELOG.md#v1-10-0) |
