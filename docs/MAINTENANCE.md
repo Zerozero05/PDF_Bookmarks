@@ -2,7 +2,7 @@
 
 正式源码以 [Zerozero05/PDF_Bookmarks](https://github.com/Zerozero05/PDF_Bookmarks) 为准，程序从 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases) 下载。当前版本见 [VERSION](../VERSION)，功能与最短使用流程见 [README](../README.md)，修改边界见 [AGENTS](../AGENTS.md)。
 
-当前正式版为 v1.11.0，已完成云端门禁及七项公开附件核验。后续版本仍须具体确认与相同验证；候选 VERSION 或构建存在不等于已发布。
+当前正式版为 v1.12.0，已完成两轮云端门禁及七项公开附件核验。后续版本仍须具体确认与相同验证；候选 VERSION 或构建存在不等于已发布。
 
 ## 更新日志与文档维护
 
