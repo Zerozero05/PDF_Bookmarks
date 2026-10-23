@@ -7,16 +7,21 @@ draft: page evidence and recognition confidence never replace user confirmation.
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import wraps
 import json
 import os
 from pathlib import Path
 import re
 import tempfile
+from time import perf_counter
 
 import pymupdf
 
 from bookmarks_core import BookmarkError, inspect_pdf
+from session_cache import pdf_identity
 
 
 @dataclass
@@ -67,6 +72,60 @@ _PAGE = re.compile(r"^(.*?)(?:\s|[.．·…⋯_—-])+(\d{1,5}|[ivxlcdmIVXLCDM]{
 _NUM = re.compile(r"^[\s\-—–·.]*([0-9]{1,5})[\s\-—–·.]*$")
 _BARE_SECTION = re.compile(r"[§S]?\s*\d+(?:\s*[.．]\s*\d+)+\s*[.．]?", re.I)
 _OCR = None
+_OCR_BATCH_SIZE = 8
+_TIMINGS = ContextVar("toc_generation_timings", default=None)
+
+
+def _metric_count(name):
+    metrics = _TIMINGS.get()
+    if metrics is not None:
+        metrics[name] += 1
+
+
+@contextmanager
+def _timed_phase(name):
+    metrics = _TIMINGS.get()
+    if metrics is None:
+        yield
+        return
+    started = perf_counter()
+    try:
+        yield
+    finally:
+        metrics[name] += perf_counter() - started
+
+
+def _generation_timings(function):
+    """Measure only this call, including failure; never put timing in a Draft."""
+    @wraps(function)
+    def measured(*args, **kwargs):
+        metrics = kwargs.get("timings")
+        if metrics is not None and not isinstance(metrics, dict):
+            raise BookmarkError("识别计时须使用字典。")
+        token = _TIMINGS.set(metrics)
+        started = perf_counter() if metrics is not None else None
+        if metrics is not None:
+            metrics.update({"extraction_seconds": 0., "render_seconds": 0., "ocr_seconds": 0.,
+                            "refinement_seconds": 0., "total_seconds": 0., "cache_hits": 0,
+                            "cache_misses": 0, "local_cache_hits": 0, "extraction_pages": 0,
+                            "text_pages": 0, "ocr_pages": 0, "ocr_calls": 0, "refinement_batches": 0,
+                            "status": "running",
+                            "timing_note": "Wall-clock seconds; OCR includes refinement inference. Do not sum overlapping phases. Counts include completed work only; cache hits do not replay earlier timings."})
+        try:
+            result = function(*args, **kwargs)
+            if metrics is not None:
+                metrics["status"] = "completed"
+            return result
+        except BaseException:
+            if metrics is not None:
+                cancel = kwargs.get("cancel")
+                metrics["status"] = "cancelled" if cancel is not None and cancel.is_set() else "failed"
+            raise
+        finally:
+            if metrics is not None:
+                metrics["total_seconds"] = perf_counter() - started
+            _TIMINGS.reset(token)
+    return measured
 
 
 def _integer(value, label, *, positive=False):
@@ -687,6 +746,32 @@ def _ocr_label(text):
         return re.sub(r"^[§S](?=\s*\d)|\s+", "", match[0]).replace("．", ".").casefold()
 
 
+def _recognize_crops(engine, crops, cancel, *, rotate=False):
+    """Bound retries to small batches; one inference itself is not interruptible.
+
+    Preserve positional correspondence even if a batch has no readings. This
+    prevents the next batch's title/page from being assigned to the wrong row.
+    """
+    texts, scores = [], []
+    for start in range(0, len(crops), _OCR_BATCH_SIZE):
+        _cancelled(cancel)
+        batch = crops[start:start + _OCR_BATCH_SIZE]
+        with _timed_phase("refinement_seconds"):
+            if rotate:
+                batch, _ = engine.cls_and_rotate(batch)
+                _cancelled(cancel)
+            result = engine.recognize_txt(batch)
+            _metric_count("refinement_batches")
+        _cancelled(cancel)
+        count = min(len(batch), len(result.txts), len(result.scores)) if (
+            result.txts is not None and result.scores is not None) else 0
+        texts.extend(list(result.txts[:count]) if count else [])
+        scores.extend(list(result.scores[:count]) if count else [])
+        texts.extend([""] * (len(batch) - count))
+        scores.extend([0.0] * (len(batch) - count))
+    return texts, scores
+
+
 def _refine_ocr_titles(pix, lines, engine, cancel):
     """Re-read image-backed short titles, retaining the original page numbers."""
     from difflib import SequenceMatcher
@@ -701,14 +786,8 @@ def _refine_ocr_titles(pix, lines, engine, cancel):
             candidates.append((line, parsed[0][0], _PAGE.match(line.text)[2], crop))
     if not candidates:
         return
-    _cancelled(cancel)
-    crops, _ = engine.cls_and_rotate([item[3] for item in candidates])
-    _cancelled(cancel)
-    result = engine.recognize_txt(crops)
-    _cancelled(cancel)
-    if result.txts is None or result.scores is None:
-        return
-    for (line, old_title, page, _), text, score in zip(candidates, result.txts, result.scores):
+    texts, scores = _recognize_crops(engine, [item[3] for item in candidates], cancel, rotate=True)
+    for (line, old_title, page, _), text, score in zip(candidates, texts, scores):
         title = _clean(text)
         old_key, key = _normal(old_title), _normal(title)
         old_label = _ocr_label(old_title)
@@ -759,12 +838,8 @@ def _recover_ocr_rows(image, lines, engine, cancel):
                    max(0, int(line.left) - 5):int(line.right)] for line in missing]
     if not crops:
         return
-    _cancelled(cancel)
-    result = engine.recognize_txt(crops)
-    _cancelled(cancel)
-    if result.txts is None or result.scores is None:
-        return
-    for line, crop, text, score in zip(missing, crops, result.txts, result.scores):
+    texts, scores = _recognize_crops(engine, crops, cancel)
+    for line, crop, text, score in zip(missing, crops, texts, scores):
         _cancelled(cancel)
         candidate = _Line(str(text), line.x, line.y, line.height, float(score),
                           column=line.column, left=line.left, right=line.right)
@@ -852,14 +927,9 @@ def _recover_leader_rows(pix, lines, engine, cancel):
                 crops.extend((title[0], page[0]))
     if not crops:
         return lines
-    _cancelled(cancel)
-    result = engine.recognize_txt(crops)
-    _cancelled(cancel)
-    if result.txts is None or result.scores is None:
-        return lines
+    texts, scores = _recognize_crops(engine, crops, cancel)
     recovered = []
-    pairs = zip(candidates, zip(result.txts[::2], result.txts[1::2]),
-                zip(result.scores[::2], result.scores[1::2]))
+    pairs = zip(candidates, zip(texts[::2], texts[1::2]), zip(scores[::2], scores[1::2]))
     for (column, left, right, title_rect, page_rect), texts, scores in pairs:
         title, page = (_clean(str(text)) for text in texts)
         score = min(map(float, scores))
@@ -909,6 +979,7 @@ def _ocr_lines(pix, cancel=None, *, column_mode="auto", split=None):
     def recognize(use_cls, crop=None, *, start=0, column=0, left=0, right=None):
         _cancelled(cancel)
         output = engine(image if crop is None else crop, use_cls=use_cls)
+        _metric_count("ocr_calls")
         if output.boxes is None or output.txts is None:
             return []
         boxes = [
@@ -1009,13 +1080,21 @@ def _normalized_source(rect, page_rect):
             (clipped.y1 - page_rect.y0) / page_rect.height)
 
 
-def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None, column_mode="auto", page_regions=None):
+@_generation_timings
+def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_existing=False, progress=None, cancel=None, column_mode="auto", page_regions=None, force_ocr_pages=None, session_cache=None, timings=None):
     """Recognize a reviewable draft without changing the PDF or its caches.
 
     ``page_regions`` maps actual PDF pages to optional normalized display
     ``rect``, ``split`` and per-page ``mode``. A separator overrides automatic
     layout, but regions never restrict the independent body-page evidence.
     Observed source locations stay in the draft and are not exported to JSON.
+    ``force_ocr_pages`` only overrides directory reads on those actual PDF
+    pages. Body-page evidence still uses its independent, full-page path.
+    ``session_cache`` is optional and never stores edited Draft objects.
+    ``timings`` optionally receives current-run wall-clock phases and completed
+    counts, including partial work on cancellation/failure. OCR time includes
+    refinement inference, while rendering/extraction exclude grouping/parsing;
+    these values are not an additive breakdown of total wall-clock time.
     """
     if column_mode not in ("auto", "single", "double"):
         raise BookmarkError("目录栏数须选择自动、单栏或双栏。")
@@ -1029,6 +1108,14 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
             raise BookmarkError("PDF 为空、无法读取或需要密码。")
         count = doc.page_count
         regions = _page_regions(page_regions, count)
+        forced = set()
+        if force_ocr_pages is not None:
+            if not isinstance(force_ocr_pages, (list, tuple, set, frozenset, range)):
+                raise BookmarkError("强制 OCR 页须是实际 PDF 页码列表。")
+            for number in force_ocr_pages:
+                if not 1 <= _integer(number, "强制 OCR 页", positive=True) <= count:
+                    raise BookmarkError(f"强制 OCR 页须在 PDF 的 1–{count} 页之间。")
+                forced.add(number)
         for value, name in ((toc_start, "目录起始页"), (toc_end, "目录结束页")):
             if value is not None and not 1 <= _integer(value, name, positive=True) <= count:
                 raise BookmarkError(f"{name} 必须在 PDF 的 1–{count} 页之间。")
@@ -1045,17 +1132,35 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                 return Draft(path, count, entries, [], None, "已有 PDF 书签", ["复用了已有书签；可能不完整，仍需确认。"])
 
         cache, methods = {}, set()
+        document_identity = pdf_identity(path) if session_cache is not None else None
 
         def read(number, *, directory=True):
             _cancelled(cancel)
             region = regions.get(number) if directory else None
-            key = (number, bool(region))
+            forced_ocr = directory and number in forced
+            mode = region.get("mode", column_mode) if region else column_mode
+            key = (number, tuple(region.get("rect", (0, 0, 1, 1))) if region else None,
+                   region.get("split") if region else None, mode, forced_ocr)
+            if key in cache:
+                _metric_count("local_cache_hits")
+            if key not in cache and session_cache is not None:
+                saved = session_cache.get("recognition", key, document=document_identity)
+                if saved is not None:
+                    _metric_count("cache_hits")
+                    lines, width, height, method = saved
+                    methods.add(method)
+                    cache[key] = lines, width, height
+                else:
+                    _metric_count("cache_misses")
             if key not in cache:
                 report(f"读取 PDF 第 {number}/{count} 页……")
                 page = doc[number - 1]
-                words = page.get_text("words")
+                words = []
+                if not forced_ocr:
+                    with _timed_phase("extraction_seconds"):
+                        words = page.get_text("words")
+                        _metric_count("extraction_pages")
                 clip = page.rect
-                mode = region.get("mode", column_mode) if region else column_mode
                 split = None
                 if region:
                     x0, y0, x1, y1 = region.get("rect", (0, 0, 1, 1))
@@ -1071,7 +1176,7 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                     if "split" in region:
                         split = region["split"] * page.rect.width - clip.x0
                 useful = "".join(str(word[4]) for word in words)
-                if len(useful) >= 8 and useful.count("�") < len(useful) * .1 and not (region and page.rotation):
+                if not forced_ocr and len(useful) >= 8 and useful.count("�") < len(useful) * .1 and not (region and page.rotation):
                     boxes = [(a, b, c, d, str(text), 1.0) for a, b, c, d, text, *_ in words]
                     lines = (_group_boxes(boxes) if mode == "auto" and split is None else
                              _group_boxes(boxes, column_mode=mode, page_width=clip.width, split=split))
@@ -1089,17 +1194,21 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                         else:
                             bounds = pymupdf.Rect(line.rect) * page.rotation_matrix if line.rect is not None else None
                         line.rect = _normalized_source(bounds, page.rect)
-                    methods.add("文字提取")
+                    method = "文字提取"
+                    _metric_count("text_pages")
                 else:
                     report(f"本地 OCR：PDF 第 {number}/{count} 页……")
                     scale = min(4.0, 1900 / max(page.rect.width, page.rect.height))
-                    pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False,
-                                          **({"clip": clip} if region else {}))
+                    with _timed_phase("render_seconds"):
+                        pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False,
+                                              **({"clip": clip} if region else {}))
                     if pix.width < 1 or pix.height < 1:
                         raise BookmarkError("识别区域过小，请扩大后再试。")
                     split_pixels = region["split"] * page.rect.width * scale - pix.x if split is not None else None
-                    lines = (_ocr_lines(pix, cancel) if mode == "auto" and split_pixels is None else
-                             _ocr_lines(pix, cancel, column_mode=mode, **({"split": split_pixels} if split_pixels is not None else {})))
+                    with _timed_phase("ocr_seconds"):
+                        lines = (_ocr_lines(pix, cancel) if mode == "auto" and split_pixels is None else
+                                 _ocr_lines(pix, cancel, column_mode=mode, **({"split": split_pixels} if split_pixels is not None else {})))
+                        _metric_count("ocr_pages")
                     width, height = pix.width, pix.height
                     for line in lines:
                         bounds = (tuple((value + (pix.x if index % 2 == 0 else pix.y)) / scale
@@ -1114,9 +1223,12 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
                                 line.right = (line.right + pix.x) / scale
                     if region:
                         width, height = page.rect.width, page.rect.height
-                    methods.add("本地 OCR")
+                    method = "本地 OCR"
                 _cancelled(cancel)
+                methods.add(method)
                 cache[key] = (lines, width, height)
+                if session_cache is not None:
+                    session_cache.put("recognition", key, (lines, width, height, method), document=document_identity)
             return cache[key]
 
         toc_pages, parts, layout, locations = [], [], [], []

@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     "last_dir": "",
     "topmost": False,
     "theme": "light",
+    "ui_scale": 100,
     "geometry": "1100x860",
     "editor_geometry": "1240x900",
     "editor_topmost": False,
@@ -102,6 +103,10 @@ def sanitize_settings(settings) -> dict:
             continue
         if name == "editor_shortcuts":
             result[name] = sanitize_overrides(value)
+            continue
+        if name == "ui_scale":
+            if type(value) is int and value in {100, 110, 125}:
+                result[name] = value
             continue
         if type(value) is not type(default):
             continue

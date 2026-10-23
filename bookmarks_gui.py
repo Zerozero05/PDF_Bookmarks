@@ -14,21 +14,27 @@ from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 from bookmarks_core import discover_pairs, inspect_pdf, write_plan
 from gui_support import (delete_written_toc, dropped_pairs, load_settings, render_page,
                          save_settings, settings_path, toc_file_signature)
-from ui_theme import add_tooltip, apply_app_icon, apply_theme, refresh_theme_widgets
+from ui_theme import add_tooltip, apply_app_icon, apply_theme, apply_ui_scale, refresh_theme_widgets
 from help_dialog import show_help
 from ui_layout import ColumnMemory, PaneMemory
 from window_controls import TitlebarPin
 from shortcut_keys import ShortcutProfile
+from session_cache import SessionCache, pdf_identity
 
 
 class BookmarkWindow:
     def __init__(self, root, initial_paths=None, settings_path=None):
         settings = load_settings(settings_path)
         self.root, self.settings_path = root, settings_path
+        if getattr(root, "_pdf_session_cache", None) is None:
+            root._pdf_session_cache = SessionCache()
+        self.session_cache = root._pdf_session_cache
         self.theme = tk.StringVar(master=root, value=settings["theme"])
+        self.ui_scale = tk.IntVar(master=root, value=settings["ui_scale"])
         self.focus_mode = tk.BooleanVar(master=root, value=settings["focus_mode"])
         self._view_focus_mode = tk.BooleanVar(master=root)
         self._layout_memories = {}
+        apply_ui_scale(root, self.ui_scale.get())
         apply_theme(root, self.theme.get())
         apply_app_icon(root)
         root.title("PDF_Bookmarks · PDF 书签目录")
@@ -49,6 +55,11 @@ class BookmarkWindow:
         self.pending_editor_saves = []
         self.inputs, self.plans, self.drop_paths = [], [], []
         self.items, self.toc_overrides, self.bookmark_rows = {}, {}, {}
+        self.file_search = tk.StringVar(master=root)
+        self.file_filter = tk.StringVar(master=root, value="全部")
+        self.file_filter_status = tk.StringVar(master=root, value="显示 0 / 共 0 本")
+        self._file_filter_after = None
+        self._file_details = None
         self._removed_files = set()
         self._render_token = 0
         self._render_future = None
@@ -104,6 +115,8 @@ class BookmarkWindow:
             self._variable_traces.append((variable, variable.trace_add("write", self._invalidate)))
         self._variable_traces.append((self.topmost, self.topmost.trace_add("write", self._apply_topmost)))
         self._variable_traces.append((self.focus_mode, self.focus_mode.trace_add("write", self._focus_changed)))
+        for variable in (self.file_search, self.file_filter):
+            self._variable_traces.append((variable, variable.trace_add("write", self._filter_file_items)))
         if initial_paths:
             self._handle_drop_paths(initial_paths)
         root.protocol("WM_DELETE_WINDOW", self._close)
@@ -160,14 +173,14 @@ class BookmarkWindow:
         backup = ttk.Checkbutton(options, text="写入前备份", variable=self.backup)
         backup.grid(row=0, column=2, sticky="w", padx=12)
         cache = ttk.Checkbutton(options, text="成功后清除茉莉花缓存（须先退出 Zotero）", variable=self.clear_cache)
-        cache.grid(row=0, column=3, columnspan=2, sticky="w")
+        cache.grid(row=2, column=2, columnspan=3, sticky="w", pady=(3, 0))
         self.inputs.extend((self.policy, backup, cache))
         self.backup_widgets = self._path_row(options, 1, "备份目录", self.backup_dir, self._choose_backup_dir, columns=5)
         cleanup = ttk.Checkbutton(options, text="写入成功后删除目录 JSON", variable=self.delete_toc)
-        cleanup.grid(row=2, column=0, columnspan=5, sticky="w", pady=(3, 0))
+        cleanup.grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
         self.inputs.append(cleanup)
         ttk.Label(options, text="备份目录留空时使用各 PDF 旁的 _backup；没有目录 JSON 时，可切换目录工作台生成并校对。",
-                  wraplength=1020).grid(row=3, column=0, columnspan=5, sticky="w", pady=(3, 0))
+                  wraplength=800).grid(row=3, column=0, columnspan=5, sticky="w", pady=(3, 0))
 
         actions = ttk.Frame(outer)
         actions.pack(fill="x", pady=(0, 8))
@@ -200,6 +213,21 @@ class BookmarkWindow:
             button = ttk.Button(select, text=label, command=lambda value=checked: self._set_all_checked(value))
             button.pack(side="right", padx=2)
             self.inputs.append(button)
+        filter_row = ttk.Frame(files)
+        filter_row.pack(fill="x", pady=(0, 4))
+        filter_row.columnconfigure(1, weight=1)
+        ttk.Label(filter_row, text="书名").grid(row=0, column=0, padx=(0, 4))
+        self.file_search_entry = ttk.Entry(filter_row, textvariable=self.file_search, width=10)
+        self.file_search_entry.grid(row=0, column=1, sticky="ew")
+        self.file_search_entry.bind("<Return>", self._filter_file_items)
+        self.file_filter_combo = ttk.Combobox(filter_row, textvariable=self.file_filter, state="readonly", width=9,
+                                              values=("全部", "缺少 JSON", "预览失败", "待写入", "写入失败", "已写入"))
+        self.file_filter_combo.grid(row=0, column=2, padx=4)
+        ttk.Button(filter_row, text="清除", width=4, style="Secondary.TButton",
+                   command=self._clear_file_filters).grid(row=0, column=3)
+        ttk.Label(files, textvariable=self.file_filter_status, style="Muted.TLabel").pack(anchor="w", pady=(0, 4))
+        add_tooltip(self.file_search_entry, "按 PDF 书名筛选，不改变配对和写入勾选。Ctrl+A 全选列表时会清除筛选；全勾选始终包含隐藏项目。")
+        add_tooltip(self.file_filter_combo, "筛选仅改变显示；隐藏项目的写入勾选仍然有效。双击状态或右键可查看单本处理详情。")
         self.file_tree = ttk.Treeview(files, columns=("checked", "name", "state"), show="headings", height=15, selectmode="extended")
         for column, title, width in (("checked", "写入", 42), ("name", "PDF", 170), ("state", "状态", 120)):
             self.file_tree.heading(column, text=title)
@@ -229,6 +257,7 @@ class BookmarkWindow:
             self.file_tree.bind(sequence, self._select_all_files)
         self.file_tree.bind("<Delete>", self._remove_selected_files)
         self.file_tree.bind("<<TreeviewSelect>>", self._selected_file)
+        self.file_tree.bind("<Double-1>", self._file_double_click)
         self._build_file_context_menu()
         for sequence in ("<Button-3>", "<Shift-F10>", "<Menu>"):
             self.file_tree.bind(sequence, self._show_file_context)
@@ -275,7 +304,7 @@ class BookmarkWindow:
         self.image_canvas.bind("<MouseWheel>", self._preview_wheel)
         self.image_canvas.bind("<Button-4>", self._preview_wheel)
         self.image_canvas.bind("<Button-5>", self._preview_wheel)
-        self.log = tk.Text(logs, wrap="none", state="disabled", font=("Microsoft YaHei", 9))
+        self.log = tk.Text(logs, wrap="none", state="disabled", font="TkTextFont")
         self._scrollers(logs, self.log)
         self._backup_state()
         self._refresh_empty_states()
@@ -288,6 +317,12 @@ class BookmarkWindow:
         self.theme_menu = tk.Menu(self.view_menu, tearoff=False)
         for label, name in (("日间模式", "light"), ("夜间模式", "dark"), ("护眼模式", "eye_care")):
             self.theme_menu.add_radiobutton(label=label, value=name, variable=self.theme, command=self._set_theme)
+        self.theme_menu.add_separator()
+        self.ui_scale_menu = tk.Menu(self.theme_menu, tearoff=False)
+        for label, scale in (("标准（100%）", 100), ("较大（110%）", 110), ("大字（125%）", 125)):
+            self.ui_scale_menu.add_radiobutton(label=label, value=scale, variable=self.ui_scale,
+                                               command=self._set_ui_scale)
+        self.theme_menu.add_cascade(label="界面字号", menu=self.ui_scale_menu)
         self.view_menu.add_cascade(label="外观", menu=self.theme_menu)
         self.view_menu.add_checkbutton(label="专注模式", variable=self._view_focus_mode,
                                        command=self._set_active_focus_mode)
@@ -486,8 +521,12 @@ class BookmarkWindow:
             self.status.set(f"无法打开所在文件夹：{error}")
 
     def _refresh_empty_states(self):
+        if self.items:
+            self.empty_files.configure(text="没有符合书名或状态的项目\n\n清除筛选可查看全部。")
+        else:
+            self.empty_files.configure(text="拖入 PDF 和目录 JSON\n\n或在上方选择文件后点击「预览」")
         for hint, target, empty in (
-                (self.empty_files, self.file_tree, not self.items),
+                (self.empty_files, self.file_tree, not self.file_tree.get_children()),
                 (self.empty_bookmarks, self.bookmark_tree, not self.bookmark_rows),
                 (self.empty_page, self.image_canvas, self._preview_target is None)):
             if empty:
@@ -505,6 +544,8 @@ class BookmarkWindow:
         menu.add_command(label="选中全部", command=self._select_all_files, accelerator="Ctrl+A")
         menu.add_command(label="清除选中", command=self._clear_file_selection)
         menu.add_command(label="移除所选（保留文件）", command=self._remove_selected_files, accelerator="Delete")
+        menu.add_separator()
+        menu.add_command(label="单本处理详情…", command=self._show_file_details)
 
     def _show_file_context(self, event):
         if self.busy or self.closed:
@@ -521,6 +562,7 @@ class BookmarkWindow:
         self.file_tree.focus_set()
         for index in (0, 2, 3, 7):
             self.file_context_menu.entryconfigure(index, state="normal" if iid in self.items else "disabled")
+        self.file_context_menu.entryconfigure("单本处理详情…", state="normal" if iid in self.items else "disabled")
         self.file_context_menu.entryconfigure(5, state="normal" if self.items else "disabled")
         self.file_context_menu.entryconfigure(6, state="normal" if self.file_tree.selection() else "disabled")
         if mouse:
@@ -571,6 +613,13 @@ class BookmarkWindow:
             self._save_settings()
         except OSError as error:
             messagebox.showwarning("设置未保存", f"无法保存外观设置：{error}", parent=self.root)
+
+    def _set_ui_scale(self):
+        apply_ui_scale(self.root, self.ui_scale.get())
+        try:
+            self._save_settings()
+        except OSError as error:
+            messagebox.showwarning("设置未保存", f"无法保存界面字号：{error}", parent=self.root)
 
     def _path_row(self, frame, row, label, variable, command, columns=3):
         frame.columnconfigure(1, weight=1)
@@ -879,15 +928,17 @@ class BookmarkWindow:
     def _record(pdf, toc, checked=True):
         return {"pdf_path": Path(pdf), "toc_path": Path(toc) if toc else None, "plan": None,
                 "checked": checked if toc else False, "ready": False, "toc_signature": None,
-                "state": "未预览" if toc else "缺少目录 JSON", "error": None}
+                "state": "未预览" if toc else "缺少目录 JSON", "error": None,
+                "preview_result": None, "write_result": None}
 
     def _replace_items(self, records):
-        self.file_tree.delete(*self.file_tree.get_children())
+        self.file_tree.delete(*tuple(self.items))
         self.items = {}
         for index, record in enumerate(records):
             self._put_item(f"file_{index}", record)
-        if self.items:
-            self.file_tree.selection_set(next(iter(self.items)))
+        self._filter_file_items()
+        if self.file_tree.get_children():
+            self.file_tree.selection_set(self.file_tree.get_children()[0])
         self._update_write_button()
 
     def _put_item(self, iid, record):
@@ -900,6 +951,64 @@ class BookmarkWindow:
     def _paint_item(self, iid):
         item = self.items[iid]
         self.file_tree.item(iid, values=("☑" if item["checked"] else "☐", item["pdf_path"].name, item["state"]))
+        if self._file_filter_after is None:
+            self._file_filter_after = self.root.after_idle(self._filter_file_items)
+        self._refresh_file_details(iid)
+
+    def _file_matches_filter(self, item):
+        if self.file_search.get().strip().casefold() not in item["pdf_path"].name.casefold():
+            return False
+        return {"全部": True, "缺少 JSON": item["toc_path"] is None,
+                "预览失败": (item.get("preview_result") or {}).get("status") == "预览失败" or bool(item["error"]),
+                "待写入": bool(item["ready"] and item["plan"] is not None and
+                              (self.existing.get() == "替换已有书签" or not item["plan"].existing)),
+                "写入失败": (item.get("write_result") or {}).get("status") == "failed",
+                "已写入": (item.get("write_result") or {}).get("status") == "written"}.get(self.file_filter.get(), True)
+
+    def _filter_file_items(self, *_args):
+        if self._file_filter_after is not None:
+            self.root.after_cancel(self._file_filter_after)
+            self._file_filter_after = None
+        if self.closed:
+            return "break"
+        for iid, item in self.items.items():
+            if self._file_matches_filter(item):
+                self.file_tree.move(iid, "", "end")
+            else:
+                self.file_tree.detach(iid)
+        self.file_filter_status.set(f"显示 {len(self.file_tree.get_children())} / 共 {len(self.items)} 本")
+        self._update_write_button()
+        return "break"
+
+    def _clear_file_filters(self):
+        self.file_search.set("")
+        self.file_filter.set("全部")
+        self._filter_file_items()
+
+    def _file_double_click(self, event):
+        if self.file_tree.identify_column(event.x) == "#3":
+            iid = self.file_tree.identify_row(event.y)
+            if iid in self.items:
+                self.file_tree.selection_set(iid)
+                self.file_tree.focus(iid)
+                self._show_file_details()
+                return "break"
+
+    def _show_file_details(self):
+        iid = self._focused_file()
+        if iid is None or self.closed:
+            return
+        from details_dialog import FileDetailsDialog
+        if self._file_details is None or not self._file_details.window.winfo_exists():
+            self._file_details = FileDetailsDialog(self.root, iid, self.items[iid])
+        else:
+            self._file_details.update_record(iid, self.items[iid])
+            self._file_details.show()
+
+    def _refresh_file_details(self, iid):
+        if (self._file_details is not None and self._file_details.window.winfo_exists()
+                and self._file_details.iid == iid and self._file_details.pdf_path == str(self.items[iid]["pdf_path"])):
+            self._file_details.update_record(iid, self.items[iid])
 
     def _file_click(self, event):
         if not event.state & 5 and self.file_tree.identify_column(event.x) == "#1":
@@ -920,6 +1029,9 @@ class BookmarkWindow:
 
     def _select_all_files(self, _event=None):
         if not self.busy and not self.closed:
+            if self.file_search.get() or self.file_filter.get() != "全部":
+                self._clear_file_filters()
+                self.status.set("已清除筛选并选中全部列表项目；写入勾选保持不变。")
             self.file_tree.selection_set(self.file_tree.get_children())
         return "break"
 
@@ -940,6 +1052,7 @@ class BookmarkWindow:
         for iid in selected:
             self._removed_files.add(self._key(self.items.pop(iid)["pdf_path"]))
         self.file_tree.delete(*selected)
+        self._filter_file_items()
         self.plans = [item["plan"] for item in self.items.values() if item["ready"]]
         self._clear_bookmarks()
         remaining = self.file_tree.get_children()
@@ -977,7 +1090,10 @@ class BookmarkWindow:
     def _update_write_button(self):
         selected = sum(iid in self.items for iid in self.file_tree.selection())
         checked = sum(item['checked'] for item in self.items.values())
-        self.selection_status.set(f"选中 {selected} 本 · 勾选写入 {checked} 本")
+        visible = set(self.file_tree.get_children())
+        hidden = sum(item["checked"] for iid, item in self.items.items() if iid not in visible)
+        self.selection_status.set(f"选中 {selected} 本 · 勾选写入 {checked} 本" +
+                                  (f"（筛选隐藏 {hidden} 本）" if hidden else ""))
         ready = bool(self._checked_items()) and not self.busy
         self.write_button.configure(state="normal" if ready else "disabled",
                                     style="Accent.TButton" if ready else "Secondary.TButton")
@@ -1043,6 +1159,7 @@ class BookmarkWindow:
                 record = self._record(pdf, toc, snapshot["checked"].get(self._key(pdf), True))
                 iid = f"file_{index}"
                 if toc is None:
+                    record["preview_result"] = {"status": "缺少目录 JSON", "error": "尚未匹配目录 JSON，未执行 PDF 预览。"}
                     self.events.put(("preview_item", (iid, record)))
                     self.events.put(("log", f"缺少目录 JSON，跳过：{pdf}"))
                     continue
@@ -1054,9 +1171,12 @@ class BookmarkWindow:
                     if signature is not None and signature == toc_file_signature(toc):
                         record["toc_signature"] = signature
                     record.update(plan=plan, ready=True, state="已有书签，默认跳过" if plan.existing and not snapshot["replace"] else "已预览")
+                    record["preview_result"] = {"status": record["state"], "page_count": plan.page_count,
+                                                 "existing_count": len(plan.existing), "planned_count": len(plan.rows)}
                     self.events.put(("log", f"{pdf}\n  共 {plan.page_count} 页，已有 {len(plan.existing)} 条书签，拟写入 {len(plan.rows)} 条。"))
                 except Exception as error:
                     record.update(checked=False, error=str(error), state="预览失败")
+                    record["preview_result"] = {"status": "预览失败", "error": str(error)}
                     errors.append(f"{pdf}：{error}")
                     self.events.put(("log", errors[-1]))
                 self.events.put(("preview_item", (iid, record)))
@@ -1174,10 +1294,22 @@ class BookmarkWindow:
         if token != self._render_token or self.closed:
             return
         try:
-            png, error = render_page(pdf, page, max_width=round(width * scale),
-                                     max_height=round(1000 * scale), max_scale=min(6.0, 2.0 * scale)), None
+            identity = pdf_identity(pdf)
+            max_width, max_height, max_scale = round(width * scale), round(1000 * scale), min(6.0, 2.0 * scale)
+            key = (identity, page, max_width, max_height, max_scale, None)
+            png = self.session_cache.get("preview", key, document=identity)
+            if png is None:
+                png = render_page(pdf, page, max_width=max_width, max_height=max_height, max_scale=max_scale)
+                if not self.closed and token == self._render_token and pdf_identity(pdf) == identity:
+                    self.session_cache.put("preview", key, png, document=identity)
+            if pdf_identity(pdf) != identity:
+                raise ValueError("PDF 在预览期间发生变化，请重新选择目标页。")
+            error = None
         except Exception as exc:
             png, error = None, str(exc)
+        if self.closed:
+            self.session_cache.clear()
+            return
         self.events.put(("render_done", (token, pdf, page, png, error)))
 
     def _write(self):
@@ -1205,6 +1337,10 @@ class BookmarkWindow:
                   f"成功后清除同目录茉莉花缓存：{'是' if options['clear_jasminum_cache'] else '否'}。\n"
                   f"成功后删除本次使用的目录 JSON：{'是' if delete_toc else '否'}。\n\n"
                   "请先关闭 PDF 阅读窗口；清除缓存时请完全退出 Zotero。\n确认按刚才的预览写入？")
+        visible = set(self.file_tree.get_children())
+        hidden = sum(iid not in visible for iid, _item in selected)
+        if hidden:
+            prompt = f"本次勾选包含 {hidden} 本被筛选隐藏的 PDF。\n" + prompt
         plans = [(iid, item["plan"]) for iid, item in selected]
         if not messagebox.askyesno("确认写入勾选的 PDF", prompt, parent=self.root):
             return
@@ -1223,12 +1359,15 @@ class BookmarkWindow:
     def _write_worker(self, plans, existing, options, delete_toc=False, signatures=None):
         written = skipped = 0
         errors, warnings = [], []
-        outcomes, states = {}, {}
+        outcomes, states, details = {}, {}, {}
         for iid, plan in plans:
             self.events.put(("write_item", (iid, "正在写入")))
+            self.events.put(("write_result", (iid, {"status": "running"})))
             try:
                 result = write_plan(plan, existing=existing, **options)
                 outcomes[iid] = result["status"]
+                details[iid] = dict(result, toc_cleanup={"status": "pending" if delete_toc else "not_requested", "path": str(plan.toc_path)})
+                self.events.put(("write_result", (iid, dict(details[iid]))))
                 state = "已写入" if result["status"] == "written" else "已有书签，已跳过"
                 written += result["status"] == "written"
                 skipped += result["status"] != "written"
@@ -1244,9 +1383,11 @@ class BookmarkWindow:
                 states[iid] = state
                 self.events.put(("write_item", (iid, state)))
             except Exception as error:
+                details[iid] = {"status": "failed", "error": str(error)}
                 errors.append(f"{plan.pdf_path}：{error}")
                 self.events.put(("log", errors[-1]))
                 self.events.put(("write_item", (iid, "写入失败")))
+                self.events.put(("write_result", (iid, dict(details[iid]))))
         if delete_toc:
             # Keep a shared JSON until every selected PDF using it has succeeded.
             groups = {}
@@ -1269,6 +1410,9 @@ class BookmarkWindow:
                     else:
                         self.events.put(("log", f"已删除目录 JSON：{toc}"))
                 for iid, _ in group:
+                    if iid in details:
+                        details[iid]["toc_cleanup"] = dict(result, path=str(toc))
+                        self.events.put(("write_result", (iid, dict(details[iid]))))
                     if outcomes.get(iid) == "written":
                         state = states[iid] + ("，目录 JSON 已删除" if result["status"] == "deleted" else "，目录 JSON 保留")
                         self.events.put(("write_item", (iid, state)))
@@ -1288,8 +1432,9 @@ class BookmarkWindow:
                     self.plans = [item["plan"] for item in self.items.values() if item["ready"]]
                     self._set_busy(False)
                     self.status.set(f"已预览 {len(self.plans)} 本；失败 {len(payload)} 本。")
-                    if self.items:
-                        self.file_tree.selection_set(next(iter(self.items)))
+                    self._filter_file_items()
+                    if self.file_tree.get_children():
+                        self.file_tree.selection_set(self.file_tree.get_children()[0])
                         self._selected_file()
                     if payload:
                         messagebox.showerror("部分文件无法预览", "\n".join(payload[:3]) + "\n详情见处理记录。", parent=self.root)
@@ -1315,6 +1460,13 @@ class BookmarkWindow:
                     iid, state = payload
                     self.items[iid]["state"] = state
                     self._paint_item(iid)
+                elif kind == "write_result":
+                    iid, result = payload
+                    if iid in self.items:
+                        self.items[iid]["write_result"] = result
+                        self._refresh_file_details(iid)
+                        if self._file_filter_after is None:
+                            self._file_filter_after = self.root.after_idle(self._filter_file_items)
                 elif kind == "write_done":
                     written, skipped, errors, warnings = payload
                     self.plans = []
@@ -1341,7 +1493,7 @@ class BookmarkWindow:
                        "recursive": self.recursive.get(),
                        "existing": "replace" if self.existing.get() == "替换已有书签" else "skip",
                        "last_dir": self.last_dir, "topmost": self.topmost.get(),
-                       "theme": self.theme.get(),
+                       "theme": self.theme.get(), "ui_scale": self.ui_scale.get(),
                        **{name: memory.snapshot() for name, memory in self._layout_memories.items()},
                        "geometry": self.root.geometry().split("+", 1)[0].split("-", 1)[0],
                        **self.editor_settings,
@@ -1393,6 +1545,12 @@ class BookmarkWindow:
         except OSError as error:
             messagebox.showwarning("设置未保存", f"无法保存设置：{error}\n本次文件处理结果不受影响。", parent=self.root)
         self.closed = True
+        self.session_cache.clear()
+        if self._file_details is not None and self._file_details.window.winfo_exists():
+            self._file_details.close()
+        if self._file_filter_after is not None:
+            self.root.after_cancel(self._file_filter_after)
+            self._file_filter_after = None
         if self.updates is not None:
             self.updates.close()
         self._render_token += 1

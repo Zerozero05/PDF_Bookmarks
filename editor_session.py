@@ -20,7 +20,7 @@ def _path_key(path):
     return os.path.normcase(str(_absolute(path)))
 
 
-def _json_copy(value):
+def _json_text(value, *, sort_keys=False):
     def check_keys(item):
         if isinstance(item, dict):
             if any(type(key) is not str for key in item):
@@ -32,9 +32,13 @@ def _json_copy(value):
                 check_keys(child)
     try:
         check_keys(value)
-        return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))
+        return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=sort_keys)
     except (TypeError, OverflowError, RecursionError, ValueError) as exc:
         raise ValueError(f"草稿包含无效或非有限的 JSON 数据：{exc}") from None
+
+
+def _json_copy(value):
+    return json.loads(_json_text(value))
 
 
 def _integer(value, label, *, maximum=None):
@@ -287,6 +291,7 @@ class UndoHistory:
         self.limit = limit
         self._states = []
         self._cursor = -1
+        self._current_json = None
 
     @property
     def can_undo(self):
@@ -297,26 +302,34 @@ class UndoHistory:
         return self._cursor + 1 < len(self._states)
 
     def reset(self, state):
-        self._states = [_json_copy(state)]
+        text = _json_text(state, sort_keys=True)
+        self._states = [json.loads(text)]
         self._cursor = 0
+        self._current_json = text
 
     def record(self, state):
-        clean = _json_copy(state)
-        if self._cursor >= 0 and json.dumps(clean, sort_keys=True) == json.dumps(self._states[self._cursor], sort_keys=True):
+        # Keep one comparison string for the current cursor, not 80 duplicate
+        # serialized histories. Unchanged operations require no extra copy.
+        text = _json_text(state, sort_keys=True)
+        if self._cursor >= 0 and text == self._current_json:
             return False
+        clean = json.loads(text)
         self._states = self._states[:self._cursor + 1] + [clean]
         self._states = self._states[-self.limit:]
         self._cursor = len(self._states) - 1
+        self._current_json = text
         return True
 
     def undo(self):
         if not self.can_undo:
             return None
         self._cursor -= 1
-        return _json_copy(self._states[self._cursor])
+        self._current_json = _json_text(self._states[self._cursor], sort_keys=True)
+        return json.loads(self._current_json)
 
     def redo(self):
         if not self.can_redo:
             return None
         self._cursor += 1
-        return _json_copy(self._states[self._cursor])
+        self._current_json = _json_text(self._states[self._cursor], sort_keys=True)
+        return json.loads(self._current_json)

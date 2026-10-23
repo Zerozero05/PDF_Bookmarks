@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import queue
 import threading
+import time
+import uuid
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
@@ -124,6 +126,25 @@ class TocEditor:
         self._render_context = None
         self._displayed_page = self._displayed_pdf = self._displayed_token = None
         self._visible_indices = set()
+        self._entry_tokens = {}
+        self._tree_rows = {}
+        self._tree_context = None
+        self._browse_context = None
+        self._filter_active = False
+        self._manual_tokens = set()
+        self._field_widgets = {}
+        self._review_windows = {}
+        self._source_photo = None
+        self._source_token = 0
+        self._source_future = None
+        self.recognition_timings = {}
+        self.preview_timings = {}
+        self.source_compare = tk.BooleanVar(value=False)
+        from session_cache import SessionCache
+        owner = self.window.winfo_toplevel()
+        if not hasattr(owner, "_pdf_session_cache"):
+            owner._pdf_session_cache = SessionCache()
+        self.session_cache = owner._pdf_session_cache
         self.page_regions = {}
         self._region_drag = None
         self._preview_kind = "target"
@@ -301,10 +322,12 @@ class TocEditor:
         self.body = body
         body.pack(fill="both", expand=True)
         left = ttk.Frame(body)
+        self._left_pane = left
         right = ttk.Frame(body, padding=(8, 0, 0, 0))
         body.add(left, weight=3)
         body.add(right, weight=3)
         tools = ttk.Frame(left)
+        self._editor_tools = tools
         tools.pack(fill="x", pady=(0, 3))
         ttk.Label(tools, text="目录校对", style="Section.TLabel").pack(side="left", padx=(0, 8))
         self._button(tools, "撤销", self.undo, width=5).pack(side="left")
@@ -313,12 +336,16 @@ class TocEditor:
         draft_button.pack(side="left", padx=(6, 3))
         self.draft_menu.add_command(label="暂存草稿", command=self.save_draft, accelerator="Ctrl+S")
         self.draft_menu.add_command(label="恢复草稿", command=self.restore_draft)
+        self.draft_menu.add_command(label="目录问题清单…", command=self.show_issues)
+        self.draft_menu.add_command(label="下一问题", command=self.next_issue)
+        self.draft_menu.add_command(label="最近识别与缓存诊断…", command=self.show_metrics)
         self.draft_menu.add_separator()
         self.draft_menu.add_checkbutton(label="删除多个目录项前询问", variable=self.confirm_multi_delete,
                                         command=self._persist_settings)
         ttk.Checkbutton(tools, text="自动暂存", variable=self.auto_save, command=self._schedule_draft).pack(side="left", padx=5)
         self._button(tools, "下一待核对", self.next_pending, width=9).pack(side="right")
         filters = ttk.Frame(left)
+        self._editor_filters = filters
         filters.pack(fill="x", pady=(0, 2))
         search = ttk.Entry(filters, textvariable=self.search_text, width=14)
         self.search_entry = search
@@ -342,7 +369,8 @@ class TocEditor:
         self.tree = ttk.Treeview(tree_frame, columns=("level", "title", "printed", "pdf", "confidence", "confirmed"),
                                  show="headings", selectmode="extended", height=10)
         style = ttk.Style(self.window)
-        style.configure("Review.Treeview", rowheight=tkfont.nametofont("TkDefaultFont").metrics("linespace") + 8)
+        style.configure("Review.Treeview", rowheight=tkfont.nametofont("TkDefaultFont").metrics("linespace")
+                        + round(8 * getattr(self.window.winfo_toplevel(), "_pdf_ui_scale", 100) / 100))
         self.tree.configure(style="Review.Treeview")
         self.tree.tag_configure("pending", foreground="#805000")
         self.tree.tag_configure("context", foreground="#767676")
@@ -373,13 +401,30 @@ class TocEditor:
         self.shortcut_hint = tree_hint
         tree_hint.pack(fill="x", pady=(3, 0))
 
-        edit = ttk.Frame(left, padding=(0, 6, 0, 0))
-        edit.pack(fill="x", pady=(6, 0))
+        edit_holder = ttk.Frame(left)
+        edit_holder.pack(fill="x", pady=(6, 0))
+        edit_holder.columnconfigure(0, weight=1)
+        edit_holder.rowconfigure(0, weight=1)
+        self._edit_scroll = tk.Canvas(edit_holder, height=180, highlightthickness=0)
+        self._edit_scroll.grid(row=0, column=0, sticky="nsew")
+        self._edit_scrollbar = ttk.Scrollbar(edit_holder, command=self._edit_scroll.yview)
+        self._edit_scrollbar.grid(row=0, column=1, sticky="ns")
+        self._edit_scroll.configure(yscrollcommand=self._edit_scrollbar.set)
+        self._edit_inner = ttk.Frame(self._edit_scroll)
+        edit = ttk.Frame(self._edit_inner, padding=(0, 6, 0, 0))
+        self._edit_content = edit
+        edit.pack(fill="x")
+        self._edit_window = self._edit_scroll.create_window(0, 0, anchor="nw", window=self._edit_inner)
+        self._edit_scroll.bind("<Configure>", self._fit_edit_aux)
+        self._edit_scroll.bind("<Map>", self._map_edit_aux)
+        self._edit_inner.bind("<Configure>", self._fit_edit_aux)
+        left.bind("<Configure>", self._fit_edit_aux)
         edit.columnconfigure(3, weight=1)
         ttk.Label(edit, text="编辑选中项", style="Section.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 3))
         for column, label, variable, width in ((0, "层级", self.level, 4), (2, "标题", self.title, 38)):
             ttk.Label(edit, text=label).grid(row=1, column=column, sticky="w", padx=3)
             entry = ttk.Entry(edit, textvariable=variable, width=width)
+            self._field_widgets[str(variable)] = entry
             entry.grid(row=1, column=column + 1, sticky="ew", padx=3, pady=3)
             if variable is self.title:
                 self._title_entry = entry
@@ -390,6 +435,7 @@ class TocEditor:
         for label, variable in (("印刷页", self.printed), ("PDF实际页", self.target)):
             ttk.Label(fields, text=label).pack(side="left", padx=3)
             entry = ttk.Entry(fields, textvariable=variable, width=7)
+            self._field_widgets[str(variable)] = entry
             entry.pack(side="left", padx=3)
             self._bind_edit_entry(entry)
             self._controls.append(entry)
@@ -415,6 +461,8 @@ class TocEditor:
         self.entry_menu.add_separator()
         self.entry_menu.add_command(label="展开所选目录项", command=lambda: self.set_selected_expanded(True), accelerator="+")
         self.entry_menu.add_command(label="折叠所选目录项", command=lambda: self.set_selected_expanded(False), accelerator="−")
+        self.entry_menu.add_separator()
+        self.entry_menu.add_command(label="批量修改所选标题…", command=self.batch_titles)
         self._build_context_menu()
         self.tree.bind("<Button-3>", self._show_context_menu)
         self.tree.bind("<Shift-F10>", self._show_context_menu)
@@ -435,6 +483,8 @@ class TocEditor:
         location_button.pack(side="left", padx=4)
         self.preview_location_menu.add_command(label="目录页", command=self.show_toc_page)
         self.preview_location_menu.add_command(label="原目录行", command=self.show_source)
+        self.preview_location_menu.add_checkbutton(label="同时对照原目录行", variable=self.source_compare,
+                                                   command=self._update_source_crop)
         self.preview_location_menu.add_separator()
         self.preview_location_menu.add_command(label="清除此页设置", command=self.clear_page_region)
         zoom_controls = ttk.Frame(right)
@@ -456,8 +506,31 @@ class TocEditor:
                                              command=self._region_tool_changed)
         self.region_menu.add_separator()
         self.region_menu.add_command(label="清除此页设置", command=self.clear_page_region)
+        self.region_menu.add_separator()
+        self.region_menu.add_command(label="重识别当前页 / 区域并比较…", command=self.recognize_current)
+        self.region_menu.add_command(label="强制本地 OCR 并比较…", command=lambda: self.recognize_current(force_ocr=True))
         ttk.Label(right, textvariable=self.preview_status, wraplength=440).pack(fill="x", pady=(0, 5))
+        self.source_crop_frame = ttk.Frame(right)
+        self.source_crop_status = tk.StringVar(value="原目录行对照")
+        ttk.Label(self.source_crop_frame, textvariable=self.source_crop_status, style="Muted.TLabel").pack(anchor="w")
+        source_view = ttk.Frame(self.source_crop_frame)
+        source_view.pack(fill="x")
+        source_view.columnconfigure(0, weight=1)
+        self.source_crop_canvas = tk.Canvas(source_view, height=80, highlightthickness=0)
+        self.source_crop_canvas.grid(row=0, column=0, sticky="ew")
+        source_scroll = ttk.Scrollbar(source_view, command=self.source_crop_canvas.yview)
+        source_scroll.grid(row=0, column=1, sticky="ns")
+        self.source_crop_canvas.configure(yscrollcommand=source_scroll.set)
+        self.source_crop_label = ttk.Label(self.source_crop_canvas, anchor="w")
+        self._source_crop_window = self.source_crop_canvas.create_window(0, 0, anchor="nw", window=self.source_crop_label)
+        self.source_crop_canvas.bind("<Map>", lambda _event: self.source_crop_canvas.coords(self._source_crop_window, 0, 0))
+        self.source_crop_label.bind("<Configure>", lambda _event: self.source_crop_canvas.configure(
+            scrollregion=self.source_crop_canvas.bbox("all")))
+        for widget in (self.source_crop_canvas, self.source_crop_label):
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(sequence, self._source_crop_wheel)
         canvas_frame = ttk.Frame(right)
+        self._canvas_frame = canvas_frame
         canvas_frame.pack(fill="both", expand=True)
         canvas_frame.columnconfigure(0, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
@@ -483,15 +556,22 @@ class TocEditor:
         segmented = ttk.Frame(mapping_tabs, padding=6)
         mapping_tabs.add(fixed, text="固定页码偏移")
         mapping_tabs.add(segmented, text="分段页码映射")
-        ttk.Label(fixed, text="PDF 实际页 = 印刷页 + 偏移；识别出的建议也会显示在这里。偏移：").pack(side="left")
-        offset_entry = ttk.Entry(fixed, textvariable=self.offset, width=7)
+        ttk.Label(fixed, text="PDF 实际页 = 印刷页 + 偏移；应用前可先预览影响。", wraplength=380).pack(anchor="w")
+        fixed_controls = ttk.Frame(fixed)
+        fixed_controls.pack(fill="x", pady=(4, 0))
+        ttk.Label(fixed_controls, text="偏移：").pack(side="left")
+        offset_entry = ttk.Entry(fixed_controls, textvariable=self.offset, width=7)
         offset_entry.pack(side="left", padx=5)
         self._controls.append(offset_entry)
-        self._button(fixed, "应用并重新核对", self.apply_offset).pack(side="left", padx=5)
-        ttk.Label(segmented, text="每行填写：印刷起页,印刷止页,PDF起页（例如 1,100,13）").pack(side="left", padx=(0, 8))
-        self.segments = tk.Text(segmented, width=30, height=3, wrap="none")
+        self._button(fixed_controls, "预览影响…", lambda: self.preview_mapping(False)).pack(side="left", padx=3)
+        self._button(fixed_controls, "应用并重新核对", self.apply_offset).pack(side="left", padx=5)
+        ttk.Label(segmented, text="每行填写：印刷起页,印刷止页,PDF起页（例如 1,100,13）", wraplength=380).pack(anchor="w")
+        segment_controls = ttk.Frame(segmented)
+        segment_controls.pack(fill="x", pady=(4, 0))
+        self.segments = tk.Text(segment_controls, width=30, height=3, wrap="none", font="TkTextFont")
         self.segments.pack(side="left", fill="x", expand=True)
-        self._button(segmented, "应用分段映射", self.apply_segments).pack(side="left", padx=8)
+        self._button(segment_controls, "预览影响…", lambda: self.preview_mapping(True)).pack(side="left", padx=3)
+        self._button(segment_controls, "应用分段映射", self.apply_segments).pack(side="left", padx=8)
         save_options = ttk.Frame(outer)
         self._focus_save_options = save_options
         save_options.pack(fill="x", pady=(0, 4))
@@ -521,16 +601,89 @@ class TocEditor:
         save_options.pack(side="bottom", fill="x", pady=(0, 4))
         ttk.Label(outer, textvariable=self.draft_status, style="Muted.TLabel").pack(side="bottom", fill="x", pady=(1, 3))
         body.pack(fill="both", expand=True)
-        for frame in (tree_frame, tree_hint, edit):
+        for frame in (tree_frame, tree_hint, edit_holder):
             frame.pack_forget()
-        edit.pack(side="bottom", fill="x", pady=(4, 0))
+        edit_holder.pack(side="bottom", fill="x", pady=(4, 0))
         tree_hint.pack(side="bottom", fill="x", pady=(3, 0))
         tree_frame.pack(fill="both", expand=True)
+        pending = [self._edit_scroll, mapping_tabs]
+        while pending:
+            widget = pending.pop()
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(sequence, self._edit_aux_wheel, add="+")
+            widget.bind("<FocusIn>", self._show_edit_field, add="+")
+            pending.extend(widget.winfo_children())
         self._shortcut_bindings = []
         target = self.window.winfo_toplevel()
         if not self.embedded:
             callback = target.bind("<F1>", self._show_help, add="+")
             self._shortcut_bindings.append((target, "<F1>", callback))
+
+    def _map_edit_aux(self, _event=None):
+        # Tk can leave a canvas window item unmapped when its Notebook page
+        # returns at the same size. Repositioning schedules the native remap.
+        self._edit_scroll.coords(self._edit_window, 0, 0)
+        self._fit_edit_aux()
+
+    def _fit_edit_aux(self, _event=None):
+        if self.closed or not hasattr(self, "_edit_inner"):
+            return
+        width = max(1, self._edit_scroll.winfo_width())
+        if int(float(self._edit_scroll.itemcget(self._edit_window, "width"))) != width:
+            self._edit_scroll.itemconfigure(self._edit_window, width=width)
+        required = self._edit_inner.winfo_reqheight()
+        available = self._left_pane.winfo_height()
+        if required <= 1 or available <= 1:
+            return
+        row = int(ttk.Style(self.window).lookup("Review.Treeview", "rowheight") or 26)
+        other = sum(widget.winfo_reqheight() for widget in
+                    (self._editor_tools, self._editor_filters, self.shortcut_hint)) + 20
+        height = max(52, min(required, available - other - row * 5))
+        if int(float(self._edit_scroll.cget("height"))) != height:
+            self._edit_scroll.configure(height=height)
+        self._edit_scroll.configure(scrollregion=(0, 0, width, required))
+        if required > height + 2:
+            self._edit_scrollbar.grid()
+        else:
+            self._edit_scrollbar.grid_remove()
+
+    def _edit_aux_wheel(self, event):
+        if self.closed or getattr(event, "state", 0) & 0x0004:
+            return
+        widget = getattr(event, "widget", None)
+        if isinstance(widget, tk.Text):
+            first, last = widget.yview()
+            if first > 0 or last < 1:
+                # Preserve the segment editor's native Text scrolling before
+                # considering the surrounding auxiliary viewport.
+                return
+        if self._edit_inner.winfo_reqheight() <= self._edit_scroll.winfo_height():
+            return
+        delta = (120 if event.num == 4 else -120) if getattr(event, "num", None) in (4, 5) else event.delta
+        if delta:
+            self._edit_scroll.yview_scroll(-1 if delta > 0 else 1, "units")
+        return "break"
+
+    def _show_edit_field(self, event):
+        if self.closed:
+            return
+        top = event.widget.winfo_rooty() - self._edit_inner.winfo_rooty()
+        bottom = top + event.widget.winfo_height()
+        start = self._edit_scroll.canvasy(0)
+        height = self._edit_scroll.winfo_height()
+        required = max(1, self._edit_inner.winfo_reqheight())
+        if top < start:
+            self._edit_scroll.yview_moveto(top / required)
+        elif bottom > start + height:
+            self._edit_scroll.yview_moveto((bottom - height) / required)
+
+    def _source_crop_wheel(self, event):
+        if self.closed or getattr(event, "state", 0) & 0x0004:
+            return
+        delta = (120 if event.num == 4 else -120) if getattr(event, "num", None) in (4, 5) else event.delta
+        if delta:
+            self.source_crop_canvas.yview_scroll(-1 if delta > 0 else 1, "units")
+        return "break"
 
     def _save_custom_shortcuts(self, overrides):
         if self.on_settings_changed is not None:
@@ -779,7 +932,9 @@ class TocEditor:
             sources.append(record[1] if record else None)
             metadata.append([record[2], record[3]] if record else None)
         return snapshot_state(self.draft, numbering_sources=sources,
-                              options={"section_style": self.section_style.get(), "numbering_meta": metadata})
+                              options={"section_style": self.section_style.get(), "numbering_meta": metadata,
+                                       "entry_tokens": [self._entry_token(entry) for entry in self.draft.entries],
+                                       "manual_tokens": sorted(self._manual_tokens)})
 
     def _remember(self):
         if self.draft is not None and not self._replaying:
@@ -880,8 +1035,18 @@ class TocEditor:
             raise ValueError("草稿的预览位置无效。")
         if options.get("preview_kind", "target") not in ("target", "source", "toc"):
             raise ValueError("草稿的预览方式无效。")
+        tokens = options.get("entry_tokens")
+        if tokens is not None and (not isinstance(tokens, list) or len(tokens) != len(draft.entries)
+                or any(not isinstance(token, str) or not token for token in tokens)
+                or len(set(tokens)) != len(tokens)):
+            raise ValueError("草稿的条目标识无效。")
+        manual = options.get("manual_tokens", [])
+        if not isinstance(manual, list) or any(not isinstance(token, str) for token in manual):
+            raise ValueError("草稿的手工修改记录无效。")
         # Validate every field before replacing the current in-memory draft.
         self.draft = draft
+        self._entry_tokens = {id(entry): (entry, token) for entry, token in zip(draft.entries, tokens or [])}
+        self._manual_tokens = set(manual)
         stat = Path(draft.pdf_path).stat()
         self._draft_identity = (stat.st_size, stat.st_mtime_ns)
         self._numbering_sources = {}
@@ -949,11 +1114,10 @@ class TocEditor:
         state = self.history.redo() if redo else self.history.undo()
         if state is None:
             return "break"
-        selection = self._index()
         self._replaying = True
         try:
             self._restore_model(state)
-            self._refresh(selection)
+            self._refresh()
             self.status.set("已重做。" if redo else "已撤销；条目、页码与确认状态一并恢复。")
         finally:
             self._replaying = False
@@ -968,7 +1132,7 @@ class TocEditor:
 
     def _filter_changed(self, _event=None):
         if not self.busy and self.draft is not None and self._apply_auto(report=True):
-            self._refresh(self._index())
+            self._refresh(record=False)
         return "break"
 
     def _view_changed(self, _event=None):
@@ -1019,7 +1183,23 @@ class TocEditor:
             following = ((indices[-1] + step) % count for step in range(1, count + 1))
             target = next((index for index in following if not self.draft.entries[index].confirmed
                            and self._matches(self.draft.entries[index])), None)
-            self._refresh(target if target is not None else indices)
+            if self.filter_mode.get() in ("待确认", "低可信"):
+                self._refresh(target if target is not None else indices)
+            else:
+                for index in indices:
+                    self.tree.item(str(index), values=self._row_values(self.draft.entries[index]), tags=("",))
+                self._editing_index = None
+                self._dirty_fields = False
+                self.confirmed.set(True)
+                if target is not None:
+                    self.tree.selection_set(str(target))
+                    self.tree.focus(str(target))
+                    self.tree.see(str(target))
+                    self._selected()
+                else:
+                    self._selected()
+                self._update_summary()
+                self._remember()
             self.status.set(f"已确认所选 {len(indices)} 项；" + (
                 "已跳到下一待核对项。" if target is not None else
                 "当前筛选范围没有待核对项。可切换“全部”继续查看。"))
@@ -1029,9 +1209,11 @@ class TocEditor:
 
     def _toggle_advanced(self):
         if self.advanced_open.get():
-            self.mapping_tabs.pack(side="bottom", fill="x", pady=5, before=self.body)
+            self.mapping_tabs.pack(in_=self._edit_inner, fill="x", pady=(0, 6), before=self._edit_content)
         else:
             self.mapping_tabs.pack_forget()
+        self._edit_scroll.yview_moveto(0)
+        self._fit_edit_aux()
 
     def _source_tab_changed(self, _event=None):
         mode = ("generate", "edit")[self.source_tabs.index("current")]
@@ -1228,8 +1410,11 @@ class TocEditor:
         layout_options = {"column_mode": layout} if layout != "auto" else {}
         if self.page_regions:
             layout_options["page_regions"] = {key: dict(value) for key, value in self.page_regions.items()}
+        self.recognition_timings = {}
+        timings = self.recognition_timings
         self._run("draft", lambda: generate_toc(pdf, toc_start=start, toc_end=end,
-                                                prefer_existing=prefer, progress=progress, cancel=self.cancel, **layout_options))
+                                                prefer_existing=prefer, progress=progress, cancel=self.cancel,
+                                                session_cache=self.session_cache, timings=timings, **layout_options))
 
     def import_json(self):
         if self.busy or self.closed:
@@ -1258,6 +1443,14 @@ class TocEditor:
         try:
             while True:
                 action, token, value = self.events.get_nowait()
+                if action in ("source_crop", "source_crop_error"):
+                    if token == self._source_token and self.source_compare.get():
+                        if action == "source_crop":
+                            self._source_photo = tk.PhotoImage(master=self.window, data=base64.b64encode(value).decode("ascii"))
+                            self.source_crop_label.configure(image=self._source_photo)
+                        else:
+                            self.source_crop_status.set(f"原目录行无法预览：{value}")
+                    continue
                 if action == "render":
                     if token == self._render_token:
                         self.empty_preview.place_forget()
@@ -1310,6 +1503,12 @@ class TocEditor:
                         self._update_save_location()
                         details = "；".join(str(note) for note in self.draft.notes)
                         self.status.set(f"{self.draft.method}。{details}")
+                elif action == "partial":
+                    if self.cancel.is_set():
+                        self.status.set("已取消，本次局部结果未采用。")
+                    else:
+                        candidates, page, rect, document = value
+                        self._show_recognition_candidates(candidates, page, rect, document)
                 elif action == "saved":
                     pdf = Path(self.draft.pdf_path)
                     callback = self.on_saved
@@ -1369,11 +1568,41 @@ class TocEditor:
         else:
             self.status.set("已选择节编号方式；新识别目录按此方式生成，导入与手工标题保持原样。")
 
-    def _refresh(self, selected=None):
+    def _entry_token(self, entry):
+        record = self._entry_tokens.get(id(entry))
+        if record is None or record[0] is not entry:
+            record = (entry, uuid.uuid4().hex)
+            self._entry_tokens[id(entry)] = record
+        return record[1]
+
+    def _capture_tree_context(self):
+        opened = {}
+        def visit(parent=""):
+            for iid in self.tree.get_children(parent):
+                token = self._tree_rows.get(iid)
+                if token:
+                    opened[token] = bool(self.tree.item(iid, "open"))
+                visit(iid)
+        visit()
+        return {"open": opened,
+                "selection": [self._tree_rows[iid] for iid in self.tree.selection() if iid in self._tree_rows],
+                "focus": self._tree_rows.get(self.tree.focus()),
+                "y": self.tree.yview()[0], "x": self.tree.xview()[0]}
+
+    def _refresh(self, selected=None, *, record=True):
         self._cancel_edit_timer()
         self._editing_index = None
         self._dirty_fields = False
+        prior = self._capture_tree_context()
+        filtering = bool(self.search_text.get().strip() or self.filter_mode.get() != "全部")
+        if filtering and not self._filter_active:
+            self._browse_context = prior
+        if not filtering and self._filter_active and self._browse_context is not None:
+            prior = self._browse_context
+            self._browse_context = None
+        self._filter_active = filtering
         self.tree.delete(*self.tree.get_children())
+        self._tree_rows = {}
         tree_view = self.view_mode.get() == "目录树"
         self.tree.configure(show="tree headings" if tree_view else "headings",
                             displaycolumns=("level", "printed", "pdf", "confidence", "confirmed") if tree_view else "#all")
@@ -1392,24 +1621,44 @@ class TocEditor:
                     visible.add(parent)
                     parent = parents[parent]
         self._visible_indices = matches
-        for index, entry in enumerate(self.draft.entries):
-            if index not in visible:
-                continue
+        by_token = {}
+        for index in sorted(visible):
+            entry = self.draft.entries[index]
+            token = self._entry_token(entry)
+            by_token[token] = index
+            self._tree_rows[str(index)] = token
             parent = str(parents[index]) if tree_view and parents[index] is not None else ""
             tag = "context" if index not in matches else "pending" if not entry.confirmed else ""
-            self.tree.insert(parent, "end", iid=str(index), text=entry.title, values=self._row_values(entry), open=True, tags=(tag,))
-        self._update_summary()
+            opened = True if filtering else prior["open"].get(token, True)
+            self.tree.insert(parent, "end", iid=str(index), text=entry.title,
+                             values=self._row_values(entry), open=opened, tags=(tag,))
+        self._entry_tokens = {id(entry): (entry, self._entry_token(entry)) for entry in self.draft.entries}
         self._update_empty_directory()
         if matches:
-            indices = selected if isinstance(selected, (list, tuple)) else [selected or 0]
-            indices = sorted({index for index in indices if index in matches}) or [min(matches)]
+            if selected is None:
+                indices = [by_token[token] for token in prior["selection"] if token in by_token and by_token[token] in matches]
+            else:
+                indices = selected if isinstance(selected, (list, tuple)) else [selected]
+            indices = sorted({index for index in indices if index in matches})
+            if not indices and (selected is not None or prior["selection"] or not prior["open"]):
+                indices = [min(matches)]
             self.tree.selection_set(*(str(index) for index in indices))
-            self.tree.focus(str(indices[0]))
-            self.tree.see(str(indices[0]))
-            self._selected()
+            if indices:
+                focus = by_token.get(prior["focus"]) if selected is None else None
+                self.tree.focus(str(focus if focus in indices else indices[0]))
+                if selected is not None or not prior["open"]:
+                    self.tree.see(str(indices[0]))
+                self._selected()
+            else:
+                self._clear_fields()
+            if selected is None and prior["open"]:
+                self.tree.yview_moveto(prior["y"])
+                self.tree.xview_moveto(prior["x"])
         else:
             self._clear_fields()
-        self._remember()
+        self._update_summary()
+        if record:
+            self._remember()
 
     def _clear_fields(self):
         self._loading_fields = True
@@ -1420,6 +1669,9 @@ class TocEditor:
         self._loading_fields = False
         self._editing_index = None
         self._dirty_fields = False
+        for widget in self._field_widgets.values():
+            widget.configure(style="TEntry")
+        self._update_source_crop()
 
     def _index(self):
         selection = self.tree.selection()
@@ -1455,6 +1707,8 @@ class TocEditor:
         self.entry_note.set(entry.note)
         self._loading_fields = False
         self._dirty_fields = False
+        self._validate_fields()
+        self._update_source_crop()
         if self._preview_kind == "source" and entry.source_page is not None:
             self.show_source()
         elif valid_target(entry, self.draft.page_count):
@@ -1471,6 +1725,7 @@ class TocEditor:
             self.confirmed.set(False)
             self._dirty_fields = True
             self.entry_note.set("修改会自动应用；目标页须重新核对并确认。")
+            self._validate_fields()
             self._cancel_edit_timer()
             if self._editing_index is not None and not self.closed:
                 self._edit_after = self.window.after(450, self._apply_auto)
@@ -1485,7 +1740,7 @@ class TocEditor:
         if level is None or level > 20:
             raise ValueError("层级须为 1–20 的整数。")
         title = self.title.get().strip()
-        if not title:
+        if not title or "\x00" in title:
             raise ValueError("书签标题不能为空。")
         printed = optional_page(self.printed.get(), "印刷页")
         pdf = optional_page(self.target.get(), "PDF 实际页")
@@ -1499,16 +1754,319 @@ class TocEditor:
             levels[index] = level
             self._validate_levels(levels)
         changed = (entry.level, entry.title, entry.printed_page, entry.pdf_page) != (level, title, printed, pdf)
+        confirmation_changed = entry.confirmed != self.confirmed.get()
         if (entry.level, entry.title) != (level, title):
             self._numbering_sources.pop(id(entry), None)
         entry.level, entry.title, entry.printed_page, entry.pdf_page = level, title, printed, pdf
         entry.confirmed = self.confirmed.get()
         if changed:
             entry.confidence, entry.note = "手工校正", "请按 PDF 实际页核对；修改已保存到当前草稿。"
+            self._manual_tokens.add(self._entry_token(entry))
         self._dirty_fields = False
         self._cancel_edit_timer()
-        self._remember()
+        if changed or confirmation_changed:
+            self._remember()
         return index
+
+    def _validate_fields(self, focus=False):
+        errors = {}
+        if self._editing_index is None or self.draft is None:
+            return errors
+        try:
+            level = optional_page(self.level.get(), "层级")
+            if level is None or level > 20:
+                raise ValueError("层级须为 1–20 的整数。")
+            levels = [entry.level for entry in self.draft.entries]
+            levels[self._editing_index] = level
+            self._validate_levels(levels)
+        except ValueError as error:
+            errors[str(self.level)] = str(error)
+        if not self.title.get().strip() or "\x00" in self.title.get():
+            errors[str(self.title)] = "书签标题不能为空或包含空字符。"
+        for variable, label in ((self.printed, "印刷页"), (self.target, "PDF 实际页")):
+            try:
+                value = optional_page(variable.get(), label)
+                if variable is self.target and value is not None and value > self.draft.page_count:
+                    raise ValueError(f"PDF 实际页不能超过 {self.draft.page_count}。")
+                if variable is self.target and self.confirmed.get() and value is None:
+                    raise ValueError("目标页未知，不能确认此项。")
+            except ValueError as error:
+                errors[str(variable)] = str(error)
+        for key, widget in self._field_widgets.items():
+            widget.configure(style="Invalid.TEntry" if key in errors else "TEntry")
+        if errors:
+            self.entry_note.set(next(iter(errors.values())))
+            if focus:
+                self._field_widgets[next(iter(errors))].focus_set()
+        return errors
+
+    def _locate_issue(self, index):
+        if index is None or self.draft is None or not 0 <= index < len(self.draft.entries):
+            return False
+        if not self._apply_auto(report=True):
+            return False
+        self.search_text.set("")
+        self.filter_mode.set("全部")
+        self._refresh(index)
+        self.tree.focus_set()
+        return True
+
+    def show_issues(self):
+        if self.busy or self.draft is None:
+            return
+        from review_dialogs import show_issues
+        tokens = [self._entry_token(entry) for entry in self.draft.entries]
+        def locate(index):
+            current = next((i for i, entry in enumerate(self.draft.entries)
+                            if self._entry_token(entry) == tokens[index]), None)
+            if current is None:
+                raise ValueError("该条目已删除，请重新打开问题清单。")
+            return self._locate_issue(current)
+        return self._review_window("issues", lambda: show_issues(self.window, self.draft, locate,
+                                    numbering_style=SECTION_STYLES[self.section_style.get()]))
+
+    def next_issue(self):
+        if self.closed or self.busy or self.draft is None or not self._apply_auto(report=True):
+            return
+        from review_tools import diagnose_draft
+        indices = sorted({issue.index for issue in diagnose_draft(self.draft,
+                          numbering_style=SECTION_STYLES[self.section_style.get()]) if issue.index is not None})
+        if not indices:
+            self.status.set("当前诊断规则没有发现问题；仍请按原目录核对完整性。")
+            return
+        current = self._index()
+        target = next((index for index in indices if current is None or index > current), indices[0])
+        self._locate_issue(target)
+
+    def _review_window(self, name, create):
+        prior = self._review_windows.get(name)
+        if prior is not None and prior.winfo_exists():
+            if name in {"issues", "mapping", "metrics"}:
+                prior.destroy()
+            else:
+                prior.lift()
+                return prior
+        window = create()
+        self._review_windows[name] = window
+        return window
+
+    def show_metrics(self):
+        if self.busy or self.closed:
+            return
+        from review_dialogs import ReviewWindow
+        def create():
+            window = ReviewWindow(self.window, "最近识别与缓存诊断",
+                "仅记录本次程序会话的实测数据。OCR含补读时间，各阶段不能简单相加；缓存预算不等于程序总内存。")
+            tree = window.table((("key", "项目", 330), ("value", "值", 420)))
+            values = dict(self.recognition_timings)
+            values.update({"preview_" + key: value for key, value in self.preview_timings.items()})
+            values.update(cache_used_bytes=self.session_cache.used_bytes,
+                          cache_budget_bytes=self.session_cache.max_bytes,
+                          cache_hits=self.session_cache.hits, cache_misses=self.session_cache.misses,
+                          cache_evictions=self.session_cache.evictions)
+            labels = {"extraction_seconds": "文字提取（秒）", "render_seconds": "识别图像生成（秒）",
+                      "ocr_seconds": "OCR，含补读（秒）", "refinement_seconds": "其中补读推理（秒）",
+                      "total_seconds": "整体识别（秒）", "status": "本次识别状态",
+                      "text_pages": "从文字读取的页数", "ocr_pages": "OCR页数",
+                      "ocr_calls": "整页OCR次数", "refinement_batches": "补读批次数",
+                      "preview_seconds": "最近预览（秒）", "preview_cached": "最近预览使用缓存",
+                      "preview_png_bytes": "最近预览图片（字节）", "cache_used_bytes": "会话缓存已用（字节）",
+                      "cache_budget_bytes": "会话缓存上限（字节）", "cache_hits": "会话缓存命中",
+                      "cache_misses": "会话缓存未命中", "cache_evictions": "会话缓存淘汰项"}
+            for key, value in values.items():
+                if key not in labels:
+                    continue
+                if key == "status":
+                    value = {"completed": "完成", "cancelled": "已取消", "failed": "失败"}.get(value, value)
+                tree.insert("", "end", values=(labels[key], f"{value:.4f}" if type(value) is float else str(value)))
+            window.set_detail("识别耗时记录在实际执行后更新，缓存命中不重复计作OCR工作。数据不上传、不写入正式JSON。关闭程序释放会话缓存；80步撤销记录独立保留。")
+            return window.show()
+        return self._review_window("metrics", create)
+
+    def batch_titles(self):
+        if self.closed or self.busy or self.draft is None or not self._apply_auto(report=True):
+            return
+        indices = sorted(int(iid) for iid in self.tree.selection())
+        if not indices:
+            self.status.set("请先选择需要批量修改的目录项。")
+            return
+        from review_dialogs import show_title_editor
+        baseline = self._history_state()
+        def apply(changes):
+            if self.busy or not self._apply_auto(report=True) or self._history_state() != baseline:
+                raise ValueError("草稿已变化，请关闭窗口并重新选择条目。")
+            if any(change.index not in indices or self.draft.entries[change.index].title != change.before
+                   or not change.after.strip() or "\x00" in change.after for change in changes):
+                raise ValueError("标题预览已失效，请重新预览。")
+            for change in changes:
+                entry = self.draft.entries[change.index]
+                entry.title = change.after
+                entry.confirmed = False
+                entry.confidence, entry.note = "手工校正", "已批量修改标题，请重新核对。"
+                self._numbering_sources.pop(id(entry), None)
+                self._manual_tokens.add(self._entry_token(entry))
+            self._refresh(indices)
+            self.status.set(f"已修改所选 {len(changes)} 项标题，可一次撤销；请重新核对。")
+        return self._review_window("titles", lambda: show_title_editor(self.window, self.draft, indices, apply))
+
+    def recognize_current(self, *, force_ocr=False):
+        if self.closed or self.busy or not self._apply_auto(report=True):
+            return
+        try:
+            self._same_pdf()
+            page = optional_page(self.preview_page.get(), "当前目录 PDF 页")
+            if page is None or page > self.draft.page_count:
+                raise ValueError("请先在右侧查看需要重识别的目录页。")
+            pdf = self._pdf_path()
+        except (ValueError, OSError) as error:
+            self._error(error)
+            return
+        regions = {page: dict(self.page_regions[page])} if page in self.page_regions else {}
+        rect = regions.get(page, {}).get("rect")
+        mode = COLUMN_MODES[self.column_mode.get()]
+        token = self._operation + 1
+        self.recognition_timings = {}
+        timings = self.recognition_timings
+        self.status.set(f"正在{'强制本地 OCR ' if force_ocr else ''}重识别第 {page} 页；完成后仅展示候选，不自动替换。")
+        def operation():
+            from session_cache import pdf_identity
+            document = pdf_identity(pdf)
+            candidates = generate_toc(pdf, toc_start=page, toc_end=page, prefer_existing=False,
+                        column_mode=mode, page_regions=regions, cancel=self.cancel,
+                        progress=lambda message: self.events.put(("progress", token, str(message))),
+                        force_ocr_pages=[page] if force_ocr else None, session_cache=self.session_cache, timings=timings)
+            if pdf_identity(pdf) != document:
+                raise ValueError("PDF 在识别期间发生变化，本次候选未载入。")
+            return candidates, page, rect, document
+        self._run("partial", operation)
+
+    def _show_recognition_candidates(self, candidates, page, rect, document=None):
+        from review_tools import contextualize_candidates, diff_recognition
+        from review_dialogs import show_recognition_diff
+        try:
+            from session_cache import pdf_identity
+            if document is not None and pdf_identity(self._pdf_path()) != document:
+                raise ValueError("PDF 已变化，请重新识别。")
+            candidates = contextualize_candidates(self.draft, candidates, source_page=page,
+                        source_rect=rect, numbering_style=SECTION_STYLES[self.section_style.get()])
+            protected = [i for i, entry in enumerate(self.draft.entries)
+                         if self._entry_token(entry) in self._manual_tokens]
+            diff = diff_recognition(self.draft, candidates, source_page=page, source_rect=rect,
+                                    protected_indices=protected)
+            # A newly generated comparison replaces only an older comparison window.
+            old = self._review_windows.get("recognition")
+            if old is not None and old.winfo_exists():
+                old.destroy()
+            self._review_windows["recognition"] = show_recognition_diff(self.window, self.draft, diff,
+                lambda accepted, overrides: self._merge_recognition(diff, accepted, overrides, document=document))
+            self.status.set("局部候选已生成；请选择需要接受的变化。缺失项保留，歧义项须手工校对。")
+        except (ValueError, OSError, BookmarkError) as error:
+            self._error(error)
+
+    def _merge_recognition(self, diff, accepted, overrides=(), *, document=None):
+        if self.closed or self.busy or not self._apply_auto(report=True):
+            return False
+        self._same_pdf()
+        from session_cache import pdf_identity
+        if document is not None and pdf_identity(self._pdf_path()) != document:
+            raise ValueError("PDF 已变化，请重新识别后再采用候选。")
+        from review_tools import merge_recognition
+        merged = merge_recognition(self.draft, diff, accepted, allow_protected=overrides)
+        records = [record for record in diff.records if record.id in accepted and record.kind in ("change", "new")]
+        if not records:
+            return True
+        changed = {record.existing_indices[0]: record for record in records if record.kind == "change"}
+        insertions = {}
+        for record in records:
+            if record.kind == "new":
+                insertions.setdefault(record.insert_before, []).append(record)
+        origins = []
+        for index in range(len(self.draft.entries) + 1):
+            origins.extend((None, record) for record in sorted(insertions.get(index, []),
+                            key=lambda record: (record.candidate_index, record.id)))
+            if index < len(self.draft.entries):
+                origins.append((index, changed.get(index)))
+        numbering, tokens, selection = {}, {}, []
+        for index, (entry, (old_index, record)) in enumerate(zip(merged.entries, origins)):
+            old_entry = self.draft.entries[old_index] if old_index is not None else None
+            token = self._entry_token(old_entry) if old_entry is not None else uuid.uuid4().hex
+            tokens[id(entry)] = (entry, token)
+            if record is not None:
+                numbering[id(entry)] = [entry, record.source_title, entry.title, entry.level]
+                self._manual_tokens.discard(token)
+                selection.append(index)
+            elif old_entry is not None and id(old_entry) in self._numbering_sources:
+                source = self._numbering_sources[id(old_entry)]
+                numbering[id(entry)] = [entry, *source[1:]]
+        sources = [numbering[id(entry)][1] if index in selection else entry.title
+                   for index, entry in enumerate(merged.entries)]
+        titles = section_titles(merged, SECTION_STYLES[self.section_style.get()], source_titles=sources)
+        for index in selection:
+            entry = merged.entries[index]
+            entry.title = titles[index]
+            numbering[id(entry)][2] = entry.title
+        self.draft, self._entry_tokens, self._numbering_sources = merged, tokens, numbering
+        # Only accepted proposals are renumbered in the actually accepted
+        # context; declining a sibling must not leave a synthetic gap.
+        self._load_mapping()
+        self._refresh(selection)
+        self.status.set(f"已采用 {len(records)} 项局部变化，其他条目保留；请重新核对，可一次撤销。")
+        return True
+
+    def _update_source_crop(self):
+        self._source_token += 1
+        token = self._source_token
+        if self._source_future is not None:
+            self._source_future.cancel()
+        self._source_photo = None
+        self.source_crop_label.configure(image="", text="")
+        self.source_crop_canvas.yview_moveto(0)
+        if self.closed or not self.source_compare.get():
+            self.source_crop_frame.pack_forget()
+            return
+        self.source_crop_frame.pack(fill="x", pady=(0, 6), before=self._canvas_frame)
+        index = self._index()
+        entry = self.draft.entries[index] if self.draft is not None and index is not None else None
+        if entry is None or entry.source_page is None or entry.source_rect is None:
+            self.source_crop_status.set("此项没有原目录行位置，可手动查看目录页。")
+            return
+        from source_preview import render_source_crop
+        from session_cache import pdf_identity
+        pdf, page, rect = self._pdf_path(), entry.source_page, tuple(entry.source_rect)
+        width = max(160, min(1024, self.canvas.winfo_width() - 8))
+        self.source_crop_status.set(f"原目录第 {page} 页 · 滚轮查看（只读对照）")
+        def work():
+            try:
+                document = pdf_identity(pdf)
+                key = (document, page, rect, width, 150)
+                data = self.session_cache.get("source_crop", key, document=document)
+                if data is None:
+                    data = render_source_crop(pdf, page, rect, max_width=width)
+                    if not self.closed and token == self._source_token and pdf_identity(pdf) == document:
+                        self.session_cache.put("source_crop", key, data, document=document)
+                if pdf_identity(pdf) != document:
+                    raise ValueError("PDF 已变化，请重新查看原目录行。")
+                if not self.closed and token == self._source_token:
+                    self.events.put(("source_crop", token, data))
+            except (ValueError, OSError, RuntimeError) as error:
+                if not self.closed:
+                    self.events.put(("source_crop_error", token, str(error)))
+        try:
+            self._source_future = self.executor.submit(work)
+        except RuntimeError as error:
+            self.source_crop_status.set(str(error))
+
+    def preview_mapping(self, segmented=False):
+        if self.busy or self.draft is None:
+            return
+        try:
+            if self._dirty_fields:
+                raise ValueError("请先完成当前条目输入，再预览页码映射。")
+            mapping = parse_segments(self.segments.get("1.0", "end")) if segmented else {"offset": int(self.offset.get())}
+            from review_dialogs import show_mapping_preview
+            return self._review_window("mapping", lambda: show_mapping_preview(self.window, self.draft, mapping))
+        except (ValueError, OSError, BookmarkError) as error:
+            self._error(error)
 
     def update_entry(self):
         if self._editing_index is None:
@@ -1557,6 +2115,7 @@ class TocEditor:
                     self.preview_status.set("目标页未知，请填写 PDF 实际页并核对。")
             return True
         except (ValueError, OSError) as error:
+            self._validate_fields(focus=report)
             self.entry_note.set(f"尚未应用：{error}")
             if report:
                 self._error(error)
@@ -2019,9 +2578,22 @@ class TocEditor:
             if self.closed or token != self._render_token:
                 return
             try:
-                png = render_page(pdf, page, max_width=round(650 * scale), max_height=round(850 * scale),
-                                  max_scale=2.0 * scale)
+                began = time.perf_counter()
+                from session_cache import pdf_identity
+                document = pdf_identity(pdf)
+                key = (document, page, round(650 * scale), round(850 * scale), 2.0 * scale, None)
+                png = self.session_cache.get("preview", key, document=document)
+                cached = png is not None
+                if png is None:
+                    png = render_page(pdf, page, max_width=round(650 * scale), max_height=round(850 * scale),
+                                      max_scale=2.0 * scale)
+                    if not self.closed and token == self._render_token and pdf_identity(pdf) == document:
+                        self.session_cache.put("preview", key, png, document=document)
+                if pdf_identity(pdf) != document:
+                    raise ValueError("PDF 已变化，请重新查看页面。")
                 if not self.closed and token == self._render_token:
+                    self.preview_timings = {"seconds": time.perf_counter() - began,
+                                            "cached": cached, "png_bytes": len(png)}
                     self.events.put(("render", token, png))
             except Exception as error:
                 if not self.closed and token == self._render_token:
@@ -2034,12 +2606,18 @@ class TocEditor:
 
     def _prepare_save(self):
         self._commit_edit()
+        from review_tools import diagnose_draft
+        blockers = [issue for issue in diagnose_draft(self.draft) if issue.severity == "error"]
+        if blockers:
+            self.status.set(f"保存前仍有 {len(blockers)} 项问题原因；可从“草稿 / 设置 → 目录问题清单”定位处理。")
         if not self.draft.entries:
             raise ValueError("目录为空，不能保存。")
         if any(not valid_target(entry, self.draft.page_count) for entry in self.draft.entries):
             raise ValueError("仍有目标页未知或越界，请先校正。")
         if any(not entry.confirmed for entry in self.draft.entries):
             raise ValueError("仍有待核对的条目。请核对目标页并确认后保存。")
+        if blockers:
+            raise ValueError(blockers[0].message + " 可从“草稿 / 设置 → 目录问题清单”定位处理。")
 
     def _save_target(self):
         default = self._loaded_json or self._pdf_path().with_suffix(".toc.json")
@@ -2152,6 +2730,14 @@ class TocEditor:
             self.window.after_cancel(self._autosave_after)
             self._autosave_after = None
         self.closed = True
+        self._source_token += 1
+        if self._source_future is not None:
+            self._source_future.cancel()
+        self._source_photo = None
+        for window in self._review_windows.values():
+            if window.winfo_exists():
+                window.destroy()
+        self._review_windows.clear()
         self._persist_settings()
         self._pane_memory.close()
         self._column_memory.close()
