@@ -1,6 +1,6 @@
 # 正式版本发布检查清单
 
-v1.11.0 已获用户具体确认，通过正式云端门禁并完成七附件公开核验。以下清单继续作为后续版本的核对模板，具体已验与未覆盖项见 VALIDATION.md；既有全部标签与发行资产保留。
+本清单用于发布 Windows 正式版。各版本实际完成的检查和覆盖范围见 [验证记录](../VALIDATION.md)，正式版本及附件见 [GitHub Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)。
 
 每次正式发布将本清单与 [更新验收矩阵](UPDATE_ACCEPTANCE.md) 的实际结果一同核对。任何必须项未通过，不发布“看似成功”的不完整更新。
 

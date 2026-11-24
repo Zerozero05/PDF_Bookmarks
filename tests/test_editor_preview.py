@@ -105,6 +105,7 @@ class EditorPreviewTests(unittest.TestCase):
             self.spin(lambda: self.editor._photo is not previous)
             scroll.assert_not_called()
         self.assertGreater(self.editor._preview_scale, 1.0)
+        self.assertFalse(self.editor._photo["data"], "The displayed preview retained an encoded PNG")
         self.assertGreater(int(self.editor.preview_zoom.get().rstrip("%")), 100)
         self.wheel(-120, control=True)
         self.spin(lambda: self.editor.preview_zoom.get() == "100%")

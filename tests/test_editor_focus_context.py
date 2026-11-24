@@ -34,9 +34,10 @@ class EditorFocusContextTests(unittest.TestCase):
             self.editor.view_menu.invoke("专注模式")
             self.root.update_idletasks()
             self.assertEqual(self.editor.focus_mode.get(), expected)
-            for widget in (self.editor._focus_source, self.editor.source_tabs,
-                           self.editor._focus_options, self.editor._focus_save_options):
+            for widget in (self.editor._focus_source, self.editor.source_tabs, self.editor._focus_save_options):
                 self.assertEqual(bool(widget.winfo_manager()), not expected)
+            for selector in (self.editor.column_mode_combo, self.editor.section_style_combo):
+                self.assertTrue(selector.winfo_ismapped())
             self.assertFalse(hasattr(self.editor, "focus_button"))
             self.assertEqual(str(self.editor.window.cget("menu")), str(self.editor.menu_bar))
             self.assertEqual(self.editor.view_menu.entrycget("专注模式", "state"), "normal")

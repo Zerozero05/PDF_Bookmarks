@@ -61,7 +61,7 @@ def main(arguments=None):
         def on_ready(window):
             window._set_busy(True)
             window.status.set("正在完成程序更新，请稍候…")
-            # Main GUI imports the PDF core and builds TkDnD before this callback.
+            # Exercise the PDF engine explicitly before acknowledging an update.
             import bookmarks_core
             import pymupdf
             with pymupdf.open() as document:

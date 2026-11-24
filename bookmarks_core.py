@@ -12,9 +12,6 @@ import shutil
 import tempfile
 import uuid
 
-import pymupdf
-
-
 class BookmarkError(Exception):
     """A validation or safe-write failure suitable for displaying to the user."""
 
@@ -147,6 +144,8 @@ def _check_path(path: Path) -> None:
 
 
 def _check_document(document) -> None:
+    from pymupdf import PDF_WIDGET_TYPE_SIGNATURE
+
     if not document.is_pdf:
         raise BookmarkError("输入文件不是 PDF。")
     if (document.needs_pass or document.is_encrypted
@@ -158,7 +157,7 @@ def _check_document(document) -> None:
         raise BookmarkError("检测到 PDF 签名标志；为保护签名，已停止处理。")
     for page in document:
         for widget in page.widgets() or ():
-            if widget.field_type == pymupdf.PDF_WIDGET_TYPE_SIGNATURE:
+            if widget.field_type == PDF_WIDGET_TYPE_SIGNATURE:
                 raise BookmarkError("检测到 PDF 签名字段；为保护签名，已停止处理。")
     if document.page_count < 1:
         raise BookmarkError("PDF 没有页面。")
@@ -166,6 +165,8 @@ def _check_document(document) -> None:
 
 def inspect_pdf(pdf_path, toc_path) -> Plan:
     """Validate both inputs and return a read-only preview with actual 1-based pages."""
+    import pymupdf
+
     pdf_path = Path(pdf_path).absolute()
     toc_path = Path(toc_path).absolute()
     try:
@@ -238,6 +239,8 @@ def write_plan(plan: Plan, existing: str = "skip", *, backup: bool = True,
     Only ``existing='replace'`` permits replacing the complete existing outline.
     A same-directory incremental copy is verified before the atomic replacement.
     """
+    import pymupdf
+
     if existing not in {"skip", "replace"}:
         raise BookmarkError("existing 必须为 skip 或 replace。")
     if not backup and backup_dir is not None:

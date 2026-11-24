@@ -77,6 +77,12 @@ class MainFilterDetailsTests(unittest.TestCase):
         self.root.update()
         self.assertEqual(self.main.file_tree.get_children(), ())
         self.assertEqual(len(self.main.items), 1)
+        checks = [item["checked"] for item in self.main.items.values()]
+        self.main.file_search_entry.event_generate("<Escape>")
+        self.root.update()
+        self.assertEqual(self.main.file_search.get(), "")
+        self.assertEqual(len(self.main.file_tree.get_children()), 1)
+        self.assertEqual([item["checked"] for item in self.main.items.values()], checks)
 
     def test_details_reuses_window_and_preserves_preview_result_across_write_outcomes(self):
         ids = self.load()
@@ -119,6 +125,37 @@ class MainFilterDetailsTests(unittest.TestCase):
             self.assertIn("包含 2 本被筛选隐藏", confirm.call_args.args[1])
             self.assertIn("将原地写入 3 个", confirm.call_args.args[1])
         self.assertFalse(self.main.busy)
+        self.assertEqual(len(self.main._checked_items()), 3)
+
+    def test_long_selected_book_uses_one_line_and_exposes_full_path(self):
+        self.load()
+        pdf = self.pdfs[0].with_name("很长的中文教材名称与完整书名" * 10 + ".pdf")
+        pdf.write_bytes(self.pdfs[0].read_bytes())
+        self.main._replace_items([self.main._record(pdf, None)])
+        iid, = self.main.file_tree.get_children()
+        self.main.file_tree.selection_set(iid)
+        self.main.file_tree.focus(iid)
+        self.root.update()
+        shown = self.main.current_book_label.cget("text")
+        self.assertTrue(shown.endswith("…"), shown)
+        self.assertTrue(pdf.name.startswith(shown[:-1]))
+        self.assertEqual(self.main.current_book.get(), pdf.name)
+        self.assertIn(str(pdf), self.main._current_book_tip.text)
+        self.assertIn(str(pdf), self.main._current_file_tip.text)
+        self.assertFalse(self.main.items[iid]["checked"])
+
+    def test_input_rail_and_write_footer_remain_separate_across_focus_changes(self):
+        self.load()
+        self.assertIs(self.main.source_tabs.master, self.main.file_tree.master)
+        for focused in (False, True, False):
+            self.main.focus_mode.set(focused)
+            self.root.update()
+            self.assertLess(self.main.preview_button.winfo_rooty(), self.main.file_tree.winfo_rooty())
+            self.assertGreaterEqual(self.main.write_button.winfo_rooty(),
+                                    self.main.main_body.winfo_rooty() + self.main.main_body.winfo_height())
+        self.main.file_actions_menu.invoke("全不勾")
+        self.assertFalse(self.main._checked_items())
+        self.main.file_actions_menu.invoke("全勾选")
         self.assertEqual(len(self.main._checked_items()), 3)
 
 

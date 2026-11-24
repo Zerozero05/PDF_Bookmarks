@@ -20,6 +20,8 @@ class MainUIScaleTests(unittest.TestCase):
         main.preview_zoom.set("150%")
         main.file_tree.selection_set(ids[:2])
         baseline_size = tkfont.nametofont("TkDefaultFont", root=self.root).cget("size")
+        reading_font = tkfont.nametofont("PdfBody", root=self.root)
+        log_heights = []
         before = self.root.geometry(), main.file_tree.selection(), [item["checked"] for item in main.items.values()]
         for scale, label in ((125, "大字（125%）"), (110, "较大（110%）"), (100, "标准（100%）")):
             main.ui_scale_menu.invoke(label)
@@ -32,7 +34,10 @@ class MainUIScaleTests(unittest.TestCase):
             self.assertEqual(main.file_tree.selection(), before[1])
             self.assertEqual([item["checked"] for item in main.items.values()], before[2])
             self.assertEqual(tkfont.nametofont("TkDefaultFont", root=self.root).cget("size"), round(baseline_size * scale / 100))
-            self.assertEqual(str(main.log.cget("font")), "TkTextFont")
+            self.assertEqual(str(main.log.cget("font")), reading_font.name)
+            log_heights.append(reading_font.metrics("linespace"))
+        self.assertGreater(log_heights[0], log_heights[1])
+        self.assertGreater(log_heights[1], log_heights[2])
 
     def test_larger_text_expanded_write_settings_fit_minimum_window(self):
         self.root.geometry("1000x760+10000+10000")

@@ -125,6 +125,7 @@ class EditorBatchSourceTests(unittest.TestCase):
         self.spin(lambda: self.editor._source_photo is not None)
         image = self.editor._source_photo
         self.assertGreater(image.width(), 0)
+        self.assertFalse(image["data"], "The source crop retained an encoded PNG")
         self.assertLessEqual(image.width(), 640)
         self.assertLessEqual(image.height(), 150)
         self.assertEqual(self.snapshot(), before)

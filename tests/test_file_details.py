@@ -3,6 +3,7 @@
 import copy
 from pathlib import Path
 import tkinter as tk
+from tkinter import font as tkfont
 import unittest
 
 from details_dialog import FileDetailsDialog, format_file_details
@@ -46,7 +47,9 @@ class FileDetailsTests(unittest.TestCase):
             root.update_idletasks()
             self.assertIsNone(root.grab_current())
             self.assertEqual(str(dialog.text.cget("state")), "disabled")
-            self.assertEqual(str(dialog.text.cget("font")), "TkTextFont")
+            reading_font = tkfont.nametofont("PdfBody", root=root)
+            self.assertEqual(str(dialog.text.cget("font")), reading_font.name)
+            large_line_height = reading_font.metrics("linespace")
             before = dialog.text.get("1.0", "end-1c")
             dialog.text.insert("end", "不应插入")
             self.assertEqual(dialog.text.get("1.0", "end-1c"), before)
@@ -58,6 +61,10 @@ class FileDetailsTests(unittest.TestCase):
             for theme, palette in PALETTES.items():
                 apply_theme(root, theme)
                 self.assertEqual(dialog.text.cget("background"), palette["input_background"])
+                self.assertEqual(str(dialog.text.cget("font")), reading_font.name)
+            apply_ui_scale(root, 100)
+            self.assertLess(reading_font.metrics("linespace"), large_line_height)
+            self.assertEqual(str(dialog.text.cget("state")), "disabled")
             dialog.close()
             self.assertFalse(dialog.window.winfo_exists())
             self.assertEqual(errors, [])

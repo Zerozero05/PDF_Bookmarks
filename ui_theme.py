@@ -4,36 +4,49 @@ No settings or system appearance are changed here. PDF image pixels and widget
 contents stay unchanged; only widget chrome and the known review hints change.
 """
 
+import math
 from pathlib import Path
+import struct
 import threading
+from time import monotonic
 import tkinter as tk
 from tkinter import font as tkfont, ttk
+import zlib
 
 
 PALETTES = {
     "light": {
-        "background": "#f3f5f8", "surface": "#ffffff", "foreground": "#17212f",
-        "muted": "#53616d", "border": "#bdc7d4", "input_background": "#ffffff",
-        "hover": "#e4ebf5", "disabled": "#66717f", "accent": "#155eef",
-        "accent_active": "#104dc5", "selected_background": "#1559c7",
-        "selected_foreground": "#ffffff", "pending": "#805000", "context": "#5f6b7a",
-        "error": "#b42318", "success": "#216641",
+        "background": "#f2f2ee", "surface": "#fffefa", "foreground": "#232723",
+        "muted": "#364038", "border": "#c9ccc4", "edge": "#778076", "input_background": "#fffffc",
+        "heading": "#e9eae4", "hover": "#e3e8eb", "disabled": "#59615b", "accent": "#3c576a",
+        "action": "#354f62", "accent_active": "#293f50", "selected_background": "#344d60",
+        "selected_foreground": "#ffffff", "pending": "#694207", "context": "#485248",
+        "error": "#852f27", "success": "#285133",
+        "masthead": "#fafbf6", "masthead_text": "#29363b", "masthead_hint": "#414d50",
+        "paper_surround": "#d6d9d2",
+        "chapter": "#eff1eb",
     },
     "dark": {
-        "background": "#20252d", "surface": "#2b323d", "foreground": "#e8edf5",
-        "muted": "#b8c2cf", "border": "#596577", "input_background": "#252b35",
-        "hover": "#3b4657", "disabled": "#97a3b4", "accent": "#245fc5",
-        "accent_active": "#1e52ac", "selected_background": "#315c9b",
-        "selected_foreground": "#ffffff", "pending": "#f3c973", "context": "#b8c2cf",
-        "error": "#ffaaa5", "success": "#9ddbb0",
+        "background": "#202223", "surface": "#2a2c2d", "foreground": "#f0f1ed",
+        "muted": "#cdd0ca", "border": "#515654", "edge": "#8e9891", "input_background": "#242728",
+        "heading": "#353936", "hover": "#3c4540", "disabled": "#a8ada6", "accent": "#a6c4b6",
+        "action": "#365b4d", "accent_active": "#325748", "selected_background": "#365747",
+        "selected_foreground": "#ffffff", "pending": "#efd19a", "context": "#cdd3c9",
+        "error": "#ffb6ad", "success": "#b4d7bb",
+        "masthead": "#292c2b", "masthead_text": "#f1f3ec", "masthead_hint": "#c8cec6",
+        "paper_surround": "#1c1f1e",
+        "chapter": "#323633",
     },
     "eye_care": {
-        "background": "#d4dec7", "surface": "#dfe7d3", "foreground": "#2e352e",
-        "muted": "#485742", "border": "#87977a", "input_background": "#e7eddc",
-        "hover": "#c5d3b4", "disabled": "#56634d", "accent": "#35664c",
-        "accent_active": "#28523b", "selected_background": "#34664c",
-        "selected_foreground": "#ffffff", "pending": "#785000", "context": "#4f5e45",
-        "error": "#963b2d", "success": "#2d603a",
+        "background": "#cbd0c3", "surface": "#e1e5d9", "foreground": "#252c24",
+        "muted": "#2d382b", "border": "#acb3a3", "edge": "#66725f", "input_background": "#ebeee4",
+        "heading": "#d1d7c7", "hover": "#ccd5c5", "disabled": "#4e584b", "accent": "#3c5843",
+        "action": "#384f3c", "accent_active": "#2b4532", "selected_background": "#394d3b",
+        "selected_foreground": "#ffffff", "pending": "#593a0f", "context": "#394636",
+        "error": "#68211d", "success": "#234230",
+        "masthead": "#dce1d4", "masthead_text": "#263529", "masthead_hint": "#384b39",
+        "paper_surround": "#c1c9b8",
+        "chapter": "#d7decc",
     },
 }
 
@@ -68,13 +81,13 @@ _SCALED_FONTS = ("TkDefaultFont", "TkTextFont", "TkFixedFont", "TkMenuFont",
 def _settings(palette, rowheight, scale=100):
     p = palette
     disabled = [("disabled", p["disabled"])]
-    button_background = [("disabled", p["background"]), ("pressed", p["hover"]),
+    button_background = [("disabled", p["background"]), ("pressed", p["chapter"]),
                          ("active", p["hover"])]
     control_border = [("disabled", p["border"]), ("pressed", p["accent"]),
                       ("active", p["accent"]), ("hover", p["accent"]), ("focus", p["accent"])]
     settings = {
         ".": {"configure": {
-            "font": "TkDefaultFont",
+            "font": "PdfBody",
             "background": p["background"], "foreground": p["foreground"],
             "fieldbackground": p["input_background"], "bordercolor": p["border"],
             "lightcolor": p["border"], "darkcolor": p["border"],
@@ -83,11 +96,27 @@ def _settings(palette, rowheight, scale=100):
         }},
         "TFrame": {"configure": {"background": p["background"]}},
         "Toolbar.TFrame": {"configure": {"background": p["background"]}},
-        "TLabel": {"configure": {"background": p["background"], "foreground": p["foreground"]},
+        "Masthead.TFrame": {"configure": {"background": p["masthead"]}},
+        "Paper.TFrame": {"configure": {"background": p["surface"]}},
+        "Zoom.TFrame": {"configure": {"background": p["surface"]}},
+        "Zoom.TButton": {"configure": {"background": p["surface"], "foreground": p["foreground"]},
+                         "map": {"background": button_background, "foreground": disabled}},
+        "Masthead.TLabel": {"configure": {"font": "PdfWorkspaceTitle", "foreground": p["masthead_text"],
+                                           "background": p["masthead"]}},
+        "Document.TLabel": {"configure": {"font": "PdfBody", "foreground": p["masthead_hint"],
+                                           "background": p["masthead"]}},
+        "PaperHeading.TLabel": {"configure": {"font": "PdfPaneTitle", "foreground": p["foreground"],
+                                               "background": p["surface"]}},
+        "PaneHeading.TLabel": {"configure": {"font": "PdfPaneTitle", "foreground": p["foreground"]}},
+        "PaperDetail.TLabel": {"configure": {"background": p["surface"], "foreground": p["muted"]}},
+        "ReaderHint.TLabel": {"configure": {"background": p["paper_surround"], "foreground": p["muted"]}},
+        "TSeparator": {"configure": {"background": p["border"]}},
+        "TLabel": {"configure": {"font": "PdfBody", "background": p["background"], "foreground": p["foreground"]},
                    "map": {"foreground": disabled}},
-        "Title.TLabel": {"configure": {"font": "TkHeadingFont", "foreground": p["foreground"]}},
-        "Section.TLabel": {"configure": {"font": "TkHeadingFont", "foreground": p["foreground"]}},
+        "Title.TLabel": {"configure": {"font": "PdfOutlineTitle", "foreground": p["foreground"]}},
+        "Section.TLabel": {"configure": {"font": "PdfOutlineTitle", "foreground": p["foreground"]}},
         "Muted.TLabel": {"configure": {"foreground": p["muted"]}},
+        "Hint.TLabel": {"configure": {"background": p["surface"], "foreground": p["muted"]}},
         "Error.TLabel": {"configure": {"foreground": p["error"]}},
         "Success.TLabel": {"configure": {"foreground": p["success"]}},
         "TLabelframe": {"configure": {"background": p["background"], "bordercolor": p["border"],
@@ -95,11 +124,21 @@ def _settings(palette, rowheight, scale=100):
         "TLabelframe.Label": {"configure": {"background": p["background"], "foreground": p["foreground"]}},
         "TNotebook": {"configure": {"background": p["background"], "bordercolor": p["border"]}},
         "TNotebook.Tab": {
-            "configure": {"padding": (10, 4), "background": p["background"], "foreground": p["muted"]},
+            "configure": {"padding": (10, 4), "font": "PdfBody", "background": p["background"], "foreground": p["muted"]},
             # Clam otherwise replaces this padding when a tab is selected.
             "map": {"padding": [],
                     "background": [("selected", p["surface"]), ("active", p["hover"])],
                     "foreground": [("disabled", p["disabled"]), ("selected", p["foreground"])]},
+        },
+        "Workspace.TNotebook": {"configure": {"borderwidth": 0, "tabmargins": (8, 4, 0, 3)}},
+        "Workspace.TNotebook.Tab": {
+            "configure": {"padding": (12, 5), "background": p["background"], "foreground": p["muted"],
+                          "borderwidth": 0, "font": "PdfBody"},
+            "map": {"padding": [],
+                    "background": [("disabled", p["background"]), ("selected", p["surface"]),
+                                   ("active", p["hover"])],
+                    "foreground": [("disabled", p["disabled"]), ("selected", p["foreground"])],
+                    "focuscolor": [("focus", p["accent"])]},
         },
         "TButton": {"configure": {"padding": (6, 3), "background": p["surface"], "foreground": p["foreground"]},
                     "map": {"background": button_background, "foreground": disabled,
@@ -109,22 +148,26 @@ def _settings(palette, rowheight, scale=100):
                         "map": {"background": button_background, "foreground": disabled,
                                 "bordercolor": control_border, "arrowcolor": disabled}},
         "Accent.TButton": {
-            "configure": {"background": p["accent"], "foreground": "#ffffff", "bordercolor": p["accent"]},
+            "configure": {"background": p["action"], "foreground": "#ffffff",
+                          "bordercolor": p["action"], "focuscolor": "#ffffff"},
             "map": {"background": [("disabled", p["background"]), ("pressed", p["accent_active"]),
                                    ("active", p["accent_active"])],
                     "foreground": [("disabled", p["disabled"]), ("!disabled", "#ffffff")],
-                    "bordercolor": [("disabled", p["border"]), ("!disabled", p["accent"])]},
+                    "bordercolor": [("disabled", p["border"]), ("focus", p["accent"]),
+                                    ("!disabled", p["action"])]},
         },
         "TEntry": {"configure": {"padding": (5, 2), "borderwidth": 1, "relief": "solid",
                                   "fieldbackground": p["input_background"],
-                                  "foreground": p["foreground"], "insertcolor": p["foreground"]},
+                                  "foreground": p["foreground"], "insertcolor": p["foreground"],
+                                  "bordercolor": p["edge"], "lightcolor": p["edge"], "darkcolor": p["edge"]},
                    "map": {"foreground": disabled, "fieldbackground": [("disabled", p["background"])],
                            "bordercolor": control_border, "lightcolor": control_border,
                            "darkcolor": control_border}},
         "TCombobox": {
             "configure": {"padding": (5, 2), "borderwidth": 1, "relief": "solid",
                           "fieldbackground": p["input_background"],
-                          "background": p["surface"], "foreground": p["foreground"], "arrowcolor": p["foreground"]},
+                          "background": p["surface"], "foreground": p["foreground"], "arrowcolor": p["foreground"],
+                          "bordercolor": p["edge"], "lightcolor": p["edge"], "darkcolor": p["edge"]},
             "map": {"foreground": disabled,
                     "bordercolor": control_border,
                     "lightcolor": control_border, "darkcolor": control_border,
@@ -134,21 +177,25 @@ def _settings(palette, rowheight, scale=100):
                     "selectbackground": [("readonly", p["selected_background"])],
                     "selectforeground": [("readonly", p["selected_foreground"])]},
         },
-        "TScrollbar": {"configure": {"background": p["surface"], "troughcolor": p["background"],
-                                       "arrowcolor": p["foreground"], "bordercolor": p["border"]},
-                       "map": {"background": [("active", p["hover"])]}},
+        "TScrollbar": {"configure": {"background": p["surface"], "troughcolor": p["surface"],
+                                      "arrowcolor": p["muted"], "bordercolor": p["surface"],
+                                      "lightcolor": p["surface"], "darkcolor": p["surface"],
+                                      "gripcount": 0, "arrowsize": 14},
+                       "map": {"background": [("active", p["hover"])],
+                               "arrowcolor": [("disabled", p["surface"])]}},
         "TPanedwindow": {"configure": {"background": p["background"]}},
         "Treeview": {
-            "configure": {"rowheight": rowheight, "background": p["surface"],
+            "configure": {"rowheight": rowheight, "font": "PdfBody", "background": p["surface"],
                           "fieldbackground": p["surface"], "foreground": p["foreground"], "bordercolor": p["border"]},
             "map": {"background": [("selected", p["selected_background"])],
                     "foreground": [("selected", p["selected_foreground"]), ("disabled", p["disabled"])]},
         },
         "Review.Treeview": {"configure": {"rowheight": rowheight}},
-        "Treeview.Heading": {"configure": {"padding": (6, 4), "background": p["hover"], "foreground": p["foreground"]},
-                             "map": {"background": [("active", p["surface"])]}},
+        "Treeview.Heading": {"configure": {"padding": (6, 4), "relief": "flat", "borderwidth": 0,
+                                            "font": "PdfOutlineTitle", "background": p["heading"], "foreground": p["foreground"]},
+                             "map": {"background": [("active", p["hover"])]}},
     }
-    settings["Primary.TButton"] = settings["Accent.TButton"]
+    settings["Primary.TButton"] = dict(settings["Accent.TButton"])
     settings["Invalid.TEntry"] = {
         "configure": {"bordercolor": p["error"], "lightcolor": p["error"], "darkcolor": p["error"]},
         "map": {option: [("disabled", p["border"]), ("!disabled", p["error"])]
@@ -159,26 +206,42 @@ def _settings(palette, rowheight, scale=100):
     for name in ("Secondary.TButton", "Secondary.TMenubutton"):
         settings[name] = {
             "configure": {"background": p["background"], "foreground": p["foreground"],
-                          "bordercolor": p["background"], "lightcolor": p["background"],
-                          "darkcolor": p["background"]},
+                          "bordercolor": p["border"], "lightcolor": p["border"],
+                          "darkcolor": p["border"]},
             "map": {"background": button_background, "foreground": disabled,
                     "bordercolor": control_border, "lightcolor": control_border,
                     "darkcolor": control_border},
         }
+    settings["Document.TMenubutton"] = {
+        "configure": {"background": p["masthead"], "foreground": p["masthead_text"],
+                      "arrowcolor": p["masthead_text"], "bordercolor": p["border"],
+                      "focuscolor": p["accent"]},
+        "map": {"background": button_background, "foreground": disabled, "arrowcolor": disabled,
+                "bordercolor": control_border},
+    }
+    settings["Document.TButton"] = dict(settings["Document.TMenubutton"])
     for name in ("TCheckbutton", "TRadiobutton"):
         settings[name] = {"configure": {"padding": (2, 2), "background": p["background"],
                                          "foreground": p["foreground"], "indicatorbackground": p["input_background"],
                                          "indicatorforeground": p["selected_foreground"]},
                           "map": {"foreground": disabled, "background": [("active", p["background"])],
-                                  "indicatorbackground": [("selected", p["accent"])]}}
+                                  "indicatorbackground": [("selected", p["action"])]}}
     for orientation in ("Horizontal", "Vertical"):
         settings[orientation + ".TProgressbar"] = {
             "configure": {"background": p["accent"], "troughcolor": p["input_background"], "bordercolor": p["border"]}}
+    settings["Review.Horizontal.TProgressbar"] = {
+        "configure": {"thickness": max(4, round(4 * scale / 100)), "borderwidth": 0,
+                      "troughcolor": p["chapter"], "background": p["accent"],
+                      "lightcolor": p["accent"], "darkcolor": p["accent"]}}
     if scale != 100:
         for definition in settings.values():
             configure = definition.get("configure", {})
             if "padding" in configure:
                 configure["padding"] = tuple(round(value * scale / 100) for value in configure["padding"])
+    for name in ("TButton", "TMenubutton"):
+        x, y = settings[name]["configure"]["padding"]
+        # Shift the label inside the same hit area during a press.
+        settings[name]["map"]["padding"] = [("pressed", "!disabled", (x, y + 1, x, y - 1))]
     return settings
 
 
@@ -191,7 +254,10 @@ def _checkbutton_images(root, palette, size, existing=None):
         checked = state.endswith("selected") and not state.endswith("unselected")
         alternate = state.endswith("alternate")
         border = palette["disabled"] if disabled else palette["accent"] if checked or alternate else palette["muted"]
-        fill = border if checked or alternate else palette["background"] if disabled else palette["input_background"]
+        if checked or alternate:
+            fill = border if disabled else palette["action"]
+        else:
+            fill = palette["background"] if disabled else palette["input_background"]
         mark = palette["background"] if disabled else palette["selected_foreground"]
         rows = []
         for y in range(size):
@@ -217,6 +283,181 @@ def _checkbutton_images(root, palette, size, existing=None):
     return images
 
 
+def _rounded_face(owner, fill, outline, thickness, backdrop, inset=(0, 0), tile=(64, 28), radius=4):
+    """Keep corners small and the solid centre wide for Tk's tiled painting."""
+    size = max(13, 2 * radius + 3)
+    radius = min(radius, size / 2 - max(inset))
+    inside, rim, ground = (bytes.fromhex(color[1:]) for color in (fill, outline, backdrop))
+    rows = []
+    for y in range(size):
+        row = bytearray()
+        for x in range(size):
+            dx = abs(x + .5 - size / 2) - (size / 2 - inset[0] - radius)
+            dy = abs(y + .5 - size / 2) - (size / 2 - inset[1] - radius)
+            distance = math.hypot(max(dx, 0), max(dy, 0)) + min(max(dx, dy), 0) - radius
+            alpha = min(1, max(0, .5 - distance))
+            inner = min(1, max(0, .5 - distance - thickness))
+            blend = inner / alpha if alpha else 0
+            # Antialias the rim against the local surface at creation time.
+            # Binary transparency preserves corners and avoids per-paint alpha blending.
+            row.extend(round(g + (a + (b - a) * blend - g) * alpha) for g, a, b in zip(ground, rim, inside))
+            row.append(255 if alpha else 0)
+        middle = 4 * (size // 2)
+        rows.append(b"\0" + row[:middle] + row[middle:middle + 4] * (tile[0] - size + 1) + row[middle + 4:])
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+
+    middle = size // 2
+    pixels = b"".join(rows[:middle] + [rows[middle]] * (tile[1] - size + 1) + rows[middle + 1:])
+    header = struct.pack(">IIBBBBB", *tile, 8, 6, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b"")
+    return tk.PhotoImage(master=owner, data=png, format="png")
+
+
+def _control_elements(owner, theme_name, palette, settings):
+    """Install visual elements once per theme. Widgets retain their Tk bindings."""
+    p = palette
+    images = {}
+    elements = {}
+
+    def face(fill, edge, width=1, radius=4):
+        key = (fill, edge, width, radius)
+        if key not in images:
+            images[key] = _rounded_face(owner, p[fill], p[edge], width, p["background"], radius=radius)
+        return images[key]
+
+    def add_face(name, fill, edge, hover, pressed, focus, *, hover_edge="accent", pressed_edge=None):
+        normal = face(fill, edge)
+        states = [("disabled", face("background", "border")),
+                  ("pressed", face(pressed, pressed_edge or focus)),
+                  ("focus", face(fill, focus, 2)),
+                  ("active", face(hover, hover_edge)),
+                  ("hover", face(hover, hover_edge))]
+        elements[name] = {"element create": ("image", normal, *states,
+                                              {"border": 5, "padding": 2, "width": 13, "height": 13, "sticky": "nsew"})}
+
+    add_face("PdfButton.face", "surface", "border", "hover", "chapter", "accent")
+    add_face("PdfZoom.face", "surface", "surface", "hover", "chapter", "accent")
+    elements["PdfZoom.group"] = {"element create": ("image", face("surface", "border", radius=8),
+                                                     {"border": 9, "padding": 2, "width": 19, "height": 19, "sticky": "nsew"})}
+    settings["Zoom.TFrame"]["layout"] = [("PdfZoom.group", {"sticky": "nsew"})]
+    add_face("PdfQuiet.face", "background", "border", "hover", "chapter", "accent")
+    add_face("PdfPrimary.face", "action", "action", "accent_active", "accent_active",
+             "selected_foreground", pressed_edge="accent_active")
+    add_face("PdfDocument.face", "masthead", "border", "hover", "chapter", "accent")
+    add_face("PdfInput.field", "input_background", "edge", "input_background", "input_background", "accent")
+    add_face("PdfInvalid.field", "input_background", "error", "input_background", "input_background", "error",
+             hover_edge="error")
+
+    def chevron(color, opened=False):
+        icon = tk.PhotoImage(master=owner, width=17, height=8)
+        for x in range(7):
+            offset = min(x, 6 - x)
+            y = 4 - offset if opened else 2 + offset
+            icon.put(color, to=(5 + x, y, 6 + x, y + 2))
+        return icon
+
+    arrow = chevron(p["foreground"])
+    disabled_arrow = chevron(p["disabled"])
+    open_arrow = chevron(p["accent"], opened=True)
+    images.update(arrow=arrow, disabled_arrow=disabled_arrow, open_arrow=open_arrow)
+    elements["PdfSelect.downarrow"] = {"element create": (
+        "image", arrow, ("disabled", disabled_arrow), ("pressed", open_arrow), {"sticky": ""})}
+    for name, element in (("TButton", "PdfButton.face"), ("Zoom.TButton", "PdfZoom.face"),
+                          ("Secondary.TButton", "PdfQuiet.face"),
+                          ("Accent.TButton", "PdfPrimary.face"), ("Primary.TButton", "PdfPrimary.face"),
+                          ("Document.TButton", "PdfDocument.face"), ("TMenubutton", "PdfButton.face"),
+                          ("Secondary.TMenubutton", "PdfQuiet.face"), ("Document.TMenubutton", "PdfDocument.face")):
+        menu = name.endswith("TMenubutton")
+        prefix = "Menubutton" if menu else "Button"
+        children = [("PdfSelect.downarrow", {"side": "right", "sticky": ""})] if menu else []
+        children.append((prefix + ".label", {"sticky": "nsew", "expand": True}))
+        settings[name]["layout"] = [(element, {"sticky": "nsew", "children": [
+            (prefix + ".padding", {"sticky": "nsew", "children": children})]})]
+
+    for name, prefix, element in (("TEntry", "Entry", "PdfInput.field"),
+                                  ("Invalid.TEntry", "Entry", "PdfInvalid.field"),
+                                  ("TCombobox", "Combobox", "PdfInput.field")):
+        children = [("PdfSelect.downarrow", {"side": "right", "sticky": "ns"})] if name == "TCombobox" else []
+        children.append((prefix + ".padding", {"sticky": "nsew", "children": [
+            (prefix + ".textarea", {"sticky": "nsew"})]}))
+        settings[name]["layout"] = [(element, {"sticky": "nsew", "children": children})]
+
+    def strip(name, color, height, width=192):
+        image = tk.PhotoImage(master=owner, width=width, height=height)
+        if color is not None:
+            image.put(color, to=(0, 0, width, height))
+        images[name] = image
+        return image
+
+    line = strip("underline", p["accent"], 3)
+    idle = strip("empty_line", None, 3)
+    elements["PdfTab.line"] = {"element create": ("image", idle, ("selected", line), {"width": 1, "sticky": "ew"})}
+    elements["PdfTab.tab"] = {"element create": ("image", face("background", "background"),
+        ("disabled", face("background", "background")), ("focus", face("surface", "accent", 2)),
+        ("selected", face("surface", "surface")),
+        ("active", face("hover", "hover")), {"border": 5, "padding": 1, "width": 13, "height": 13, "sticky": "nsew"})}
+    elements["PdfWorkspace.tab"] = {"element create": ("image", face("background", "background"),
+        ("disabled", face("background", "background")), ("focus", face("surface", "accent", 2, 9)),
+        ("selected", face("surface", "edge", radius=9)), ("active", face("hover", "hover", radius=9)),
+        {"border": 10, "padding": (2, 2, 2, 3), "width": 21, "height": 21, "sticky": "nsew"})}
+    elements["PdfWorkspace.line"] = {"element create": (
+        "image", strip("segment_idle", None, 2, 28), ("selected", strip("segment_mark", p["accent"], 2, 28)),
+        {"sticky": ""})}
+    for name, tab, marker, sticky in (("TNotebook.Tab", "PdfTab.tab", "PdfTab.line", "ew"),
+                                       ("Workspace.TNotebook.Tab", "PdfWorkspace.tab", "PdfWorkspace.line", "")):
+        settings[name]["layout"] = [(tab, {"sticky": "nsew", "children": [
+            (marker, {"side": "bottom", "sticky": sticky}),
+            ("Notebook.padding", {"sticky": "nsew", "children": [("Notebook.label", {"sticky": ""})]})]})]
+    for name, color in (("PdfReview.trough", p["chapter"]), ("PdfReview.pbar", p["accent"])):
+        elements[name] = {"element create": ("image", strip(name, color, 4), {"width": 1, "sticky": "nsew"})}
+    settings["Review.Horizontal.TProgressbar"]["layout"] = [("PdfReview.trough", {"sticky": "ew", "children": [
+        ("PdfReview.pbar", {"side": "left", "sticky": "ns"})]})]
+    # The transparent sides are part of the thumb, so the slim rail retains
+    # its full drag target. The default Tk layout still handles arrows and track.
+    for orientation, inset, tile in (("Vertical", (4, 0), (13, 96)), ("Horizontal", (0, 4), (96, 13))):
+        for token in ("edge", "muted", "accent"):
+            images[orientation, token] = _rounded_face(owner, p[token], p[token], 0, p["surface"], inset, tile)
+        track = strip(orientation + ".empty_thumb", p["surface"], tile[1], tile[0])
+        elements[orientation + ".Scrollbar.thumb"] = {"element create": (
+            "image", images[orientation, "edge"], ("disabled", track), ("pressed", images[orientation, "accent"]),
+            ("active", images[orientation, "muted"]), {"border": 6, "width": 13, "height": 13, "sticky": "nsew"})}
+    for orientation, sticky, width, height in (("Horizontal", "ew", 192, 1), ("Vertical", "ns", 1, 192)):
+        element = orientation + ".Separator.line"
+        divider = strip(element, p["border"], height, width)
+        elements[element] = {"element create": ("image", divider, {"width": 1, "height": 1, "sticky": "nsew"})}
+        settings[orientation + ".TSeparator"] = {"layout": [(element, {"sticky": sticky})]}
+    owner.__dict__.setdefault("_pdf_control_images", {})[theme_name] = images
+    return {**elements, **settings}
+
+
+def _reading_fonts(owner, scale):
+    """Use a locally installed Chinese UI face and measure real lines at each size."""
+    body = tkfont.nametofont("TkDefaultFont", root=owner)
+    fonts = owner.__dict__.setdefault("_pdf_workspace_fonts", {})
+    if not fonts:
+        family = body.actual("family")
+        if owner.tk.call("tk", "windowingsystem") == "win32":
+            installed = set(tkfont.families(root=owner))
+            family = next((face for face in ("Microsoft YaHei UI", "微软雅黑 UI", "Microsoft YaHei", "微软雅黑")
+                           if face in installed), family)
+        for name in ("PdfBody", "PdfOutlineTitle", "PdfPaneTitle", "PdfWorkspaceTitle"):
+            fonts[name] = tkfont.Font(root=owner, name=name, family=family,
+                                      weight="normal" if name == "PdfBody" else "bold")
+    native = body.cget("size")
+    points = native if native > 0 else abs(native) / owner.winfo_fpixels("1p")
+    size = max(points, 10 * scale / 100)
+    if getattr(owner, "_pdf_font_size", None) == size:
+        return owner._pdf_reading_line_height
+    for name, factor in (("PdfBody", 1), ("PdfOutlineTitle", 1), ("PdfPaneTitle", 1.18),
+                         ("PdfWorkspaceTitle", 1.58)):
+        fonts[name].configure(size=round(size * factor))
+    owner._pdf_font_size = size
+    owner._pdf_reading_line_height = max(fonts[name].metrics("linespace") for name in ("PdfBody", "PdfOutlineTitle"))
+    return owner._pdf_reading_line_height
+
+
 def apply_theme(root, name="light"):
     """Apply a local palette and return it without changing PDF image pixels."""
     if name not in PALETTES:
@@ -224,34 +465,37 @@ def apply_theme(root, name="light"):
     style = ttk.Style(root)
     owner = root._root()
     scale = getattr(owner, "_pdf_ui_scale", 100)
-    rowheight = tkfont.nametofont("TkDefaultFont", root=root).metrics("linespace") + round(8 * scale / 100)
-    for theme_name, palette in PALETTES.items():
-        registered = "pdf_" + theme_name
-        if registered not in style.theme_names():
-            # Keep images on the interpreter's root, including when a later
-            # standalone editor is the first caller or is closed afterwards.
-            images = _checkbutton_images(owner, palette, max(14, rowheight - round(8 * scale / 100)))
-            settings = _settings(palette, rowheight, scale)
-            settings["Checkbutton.indicator"] = {"element create": (
-                "image", images["unselected"],
-                ("disabled", "selected", images["disabled_selected"]),
-                ("disabled", "alternate", images["disabled_alternate"]),
-                ("disabled", images["disabled_unselected"]),
-                ("selected", images["selected"]), ("alternate", images["alternate"]),
-                {"sticky": ""})}
-            style.theme_create(registered, parent="clam", settings=settings)
-            owner.__dict__.setdefault("_pdf_checkbutton_images", {})[registered] = images
-        else:
-            style.theme_settings(registered, _settings(palette, rowheight, scale))
-            images = owner._pdf_checkbutton_images[registered]
-            _checkbutton_images(owner, palette, max(14, rowheight - round(8 * scale / 100)), images)
-    style.theme_use("pdf_" + name)
-    # Combobox popdowns are Tk listboxes; the option database is application local.
+    line_height = _reading_fonts(owner, scale)
+    rowheight = line_height + round(8 * scale / 100)
     palette = PALETTES[name]
-    for option, color in (("background", palette["input_background"]), ("foreground", palette["foreground"]),
+    registered = "pdf_" + name
+    dimensions = owner.__dict__.setdefault("_pdf_theme_dimensions", {})
+    if registered not in dimensions:
+        # Keep assets only for themes the reader has opened, shared by both pages.
+        images = _checkbutton_images(owner, palette, max(14, line_height))
+        settings = _settings(palette, rowheight, scale)
+        settings["Checkbutton.indicator"] = {"element create": (
+            "image", images["unselected"],
+            ("disabled", "selected", images["disabled_selected"]),
+            ("disabled", "alternate", images["disabled_alternate"]),
+            ("disabled", images["disabled_unselected"]),
+            ("selected", images["selected"]), ("alternate", images["alternate"]),
+            {"sticky": ""})}
+        style.theme_create(registered, parent="clam", settings=_control_elements(owner, registered, palette, settings))
+        owner.__dict__.setdefault("_pdf_checkbutton_images", {})[registered] = images
+    elif dimensions[registered] != (scale, rowheight):
+        style.theme_settings(registered, _settings(palette, rowheight, scale))
+        _checkbutton_images(owner, palette, max(14, line_height), owner._pdf_checkbutton_images[registered])
+    dimensions[registered] = (scale, rowheight)
+    if style.theme_use() != registered:
+        style.theme_use(registered)
+    # Combobox popdowns are Tk listboxes; the option database is application local.
+    for widget_class in ("TEntry", "TCombobox"):
+        owner.option_add(f"*{widget_class}.font", "PdfBody")
+    for option, value in (("background", palette["input_background"]), ("foreground", palette["foreground"]),
                           ("selectBackground", palette["selected_background"]),
-                          ("selectForeground", palette["selected_foreground"])):
-        root.option_add("*TCombobox*Listbox." + option, color)
+                          ("selectForeground", palette["selected_foreground"]), ("font", "PdfBody")):
+        owner.option_add("*TCombobox*Listbox." + option, value)
     return refresh_theme_widgets(root)
 
 
@@ -291,7 +535,7 @@ def _refresh_combobox_popdown(widget, palette):
         path = pending.pop()
         widget_class = widget.tk.call("winfo", "class", path)
         if widget_class == "Listbox":
-            widget.tk.call(path, "configure", "-background", palette["input_background"],
+            widget.tk.call(path, "configure", "-font", widget.cget("font"), "-background", palette["input_background"],
                            "-foreground", palette["foreground"], "-selectbackground", palette["selected_background"],
                            "-selectforeground", palette["selected_foreground"],
                            "-disabledforeground", palette["disabled"], "-highlightbackground", palette["border"])
@@ -329,9 +573,12 @@ def refresh_theme_widgets(widget):
         if isinstance(current, (tk.Tk, tk.Toplevel)):
             current.configure(background=palette["background"])
         elif isinstance(current, tk.Canvas):
-            current.configure(background=palette["surface"], highlightbackground=palette["border"],
+            background = palette["paper_surround"] if current.winfo_name() == "pdf_page_canvas" else palette["surface"]
+            current.configure(background=background, highlightbackground=palette["border"],
                               highlightcolor=palette["accent"])
         elif isinstance(current, tk.Text):
+            if str(current.cget("font")) in ("TkDefaultFont", "TkTextFont"):
+                current.configure(font="PdfBody")
             current.configure(background=palette["input_background"], foreground=palette["foreground"],
                               insertbackground=palette["foreground"], selectbackground=palette["selected_background"],
                               selectforeground=palette["selected_foreground"],
@@ -341,9 +588,14 @@ def refresh_theme_widgets(widget):
             current.configure(**menu_colors(current, palette))
         elif isinstance(current, ttk.Treeview):
             current.tag_configure("pending", foreground=palette["pending"])
+            current.tag_configure("file_error", foreground=palette["error"])
             current.tag_configure("context", foreground=palette["context"])
-        elif isinstance(current, ttk.Combobox):
-            _refresh_combobox_popdown(current, palette)
+            current.tag_configure("outline_heading", font="PdfOutlineTitle", background=palette["chapter"])
+        elif isinstance(current, ttk.Entry):
+            if str(current.cget("font")) in ("TkDefaultFont", "TkTextFont"):
+                current.configure(font="PdfBody")
+            if isinstance(current, ttk.Combobox):
+                _refresh_combobox_popdown(current, palette)
         elif isinstance(current, ttk.Label):
             # Migrate only the existing neutral hint colors; preserve semantic
             # labels and any other explicitly chosen business colors/styles.
@@ -353,6 +605,70 @@ def refresh_theme_widgets(widget):
                 current.configure(style="Muted.TLabel", foreground="")
         pending.extend(current.winfo_children())
     return dict(palette)
+
+
+def _motion_allowed(widget):
+    if widget.tk.call("tk", "windowingsystem") != "win32":
+        return False
+    import ctypes
+    from ctypes.wintypes import BOOL
+
+    enabled = BOOL()
+    # SPI_GETCLIENTAREAANIMATION follows the user's Windows animation preference.
+    return bool(ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0) and enabled.value)
+
+
+class ReviewProgressbar(ttk.Progressbar):
+    """Ease a visible change in confirmations without delaying the review action."""
+
+    def __init__(self, parent):
+        super().__init__(parent, maximum=1, value=0, takefocus=False, style="Review.Horizontal.TProgressbar")
+        self._document = None
+        self._total = self._target = 0
+        self._timer = None
+        self.bind("<Unmap>", self._finish)
+        self.bind("<Destroy>", self._cancel)
+
+    def _cancel(self, _event=None):
+        if self._timer is not None:
+            self.after_cancel(self._timer)
+            self._timer = None
+
+    def _finish(self, _event=None):
+        self._cancel()
+        self.configure(value=self._target)
+
+    def set_count(self, document, confirmed, total):
+        same_book = self._document == document and self._total == total
+        if same_book and self._target == confirmed:
+            return
+        self._cancel()
+        self._document, self._total, self._target = document, total, confirmed
+        if not same_book:
+            self.configure(maximum=max(1, total), value=confirmed)
+            return
+        if not self.winfo_ismapped() or not _motion_allowed(self):
+            self.configure(value=confirmed)
+            return
+        initial = float(self.cget("value"))
+        started = monotonic()
+
+        def advance():
+            elapsed = min(1.0, (monotonic() - started) / .12)
+            value = confirmed + (initial - confirmed) * (1 - elapsed) ** 2
+            self.configure(value=value)
+            self._timer = self.after(20, advance) if elapsed < 1 else None
+
+        advance()
+
+
+def workspace_header(parent, title):
+    header = ttk.Frame(parent, padding=(14, 6), style="Masthead.TFrame")
+    header.pack(fill="x")
+    ttk.Separator(parent, orient="horizontal").pack(fill="x")
+    header.columnconfigure(1, weight=1)
+    ttk.Label(header, text=title, style="Masthead.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 18))
+    return header
 
 
 class _Tooltip:
@@ -388,7 +704,7 @@ class _Tooltip:
         theme = ttk.Style(widget).theme_use()
         palette = PALETTES.get(theme.removeprefix("pdf_")) if theme.startswith("pdf_") else None
         if palette is not None:
-            label.configure(background=palette["surface"], foreground=palette["foreground"],
+            label.configure(font="PdfBody", background=palette["surface"], foreground=palette["foreground"],
                             borderwidth=0, relief="flat", highlightthickness=1,
                             highlightbackground=palette["border"], highlightcolor=palette["border"])
         label.pack()

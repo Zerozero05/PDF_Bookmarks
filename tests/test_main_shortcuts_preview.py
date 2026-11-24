@@ -293,6 +293,7 @@ class MainShortcutsPreviewTests(unittest.TestCase):
         self.assertGreater(self.main._render_photo.width(), old_size[0])
         self.assertAlmostEqual(self.main._preview_scale, 1.2)
         self.assertEqual(self.main._render_photo.get(20, 20), original_pixel)
+        self.assertFalse(self.main._render_photo["data"], "The displayed preview retained an encoded PNG")
         self.assertEqual(len(canvas.find_all()), 1)
         self.main._zoom_preview(reset=True)
         self.pump(lambda: self.main._render_after is None and self.main._render_future.done()

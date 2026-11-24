@@ -18,8 +18,6 @@ import re
 import tempfile
 from time import perf_counter
 
-import pymupdf
-
 from bookmarks_core import BookmarkError, inspect_pdf
 from session_cache import pdf_identity
 
@@ -644,6 +642,8 @@ def _hierarchy(parts, layout):
 
 
 def _parse(lines, *, layout=None, sources=None):
+    from pymupdf import Rect
+
     parsed = []
     pending = ""
     pending_x = None
@@ -688,7 +688,7 @@ def _parse(lines, *, layout=None, sources=None):
         if pending and not (_CHAPTER.match(title) or independent or re.match(r"^[§S]?\s*\d+[.．]\d+", title)):
             title = pending + " " + title
             x = pending_x
-            rect = (tuple(pymupdf.Rect(pending_rect) | pymupdf.Rect(rect))
+            rect = (tuple(Rect(pending_rect) | Rect(rect))
                     if pending_rect is not None and rect is not None else None)
         pending = ""
         page_text = match.group(2)
@@ -869,6 +869,7 @@ def _recover_leader_rows(pix, lines, engine, cancel):
     import cv2
     import numpy as np
     from difflib import SequenceMatcher
+    from pymupdf import Rect
 
     _cancelled(cancel)
     if not lines:
@@ -935,7 +936,7 @@ def _recover_leader_rows(pix, lines, engine, cancel):
         score = min(map(float, scores))
         if score < .8 or not re.fullmatch(r"\d{1,5}|[ivxlcdmIVXLCDM]{1,10}", page):
             continue
-        rect = tuple(pymupdf.Rect(title_rect) | pymupdf.Rect(page_rect))
+        rect = tuple(Rect(title_rect) | Rect(page_rect))
         line = _Line(f"{title} {page}", title_rect[0], (rect[1] + rect[3]) / 2,
                      rect[3] - rect[1], score, column=column, left=left, right=right, rect=rect)
         if _parse([line]):
@@ -1071,7 +1072,9 @@ def _page_regions(value, count):
 def _normalized_source(rect, page_rect):
     if rect is None:
         return None
-    clipped = pymupdf.Rect(rect) & page_rect
+    from pymupdf import Rect
+
+    clipped = Rect(rect) & page_rect
     if clipped.is_empty:
         return None
     return ((clipped.x0 - page_rect.x0) / page_rect.width,
@@ -1103,6 +1106,8 @@ def generate_toc(pdf_path, *, toc_start=None, toc_end=None, offset=None, prefer_
         raise BookmarkError("请选择可读取的 PDF 文件。")
     report = progress if progress is not None else lambda message: None
     _cancelled(cancel)
+    import pymupdf
+
     with pymupdf.open(path) as doc:
         if not doc.is_pdf or doc.needs_pass or doc.page_count < 1:
             raise BookmarkError("PDF 为空、无法读取或需要密码。")

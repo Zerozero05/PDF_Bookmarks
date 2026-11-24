@@ -7,14 +7,14 @@ import os
 from pathlib import Path
 import queue
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 
 from bookmarks_core import discover_pairs, inspect_pdf, write_plan
-from gui_support import (delete_written_toc, dropped_pairs, load_settings, render_page,
+from gui_support import (delete_written_toc, dropped_pairs, load_settings, preview_photo, render_page,
                          save_settings, settings_path, toc_file_signature)
-from ui_theme import add_tooltip, apply_app_icon, apply_theme, apply_ui_scale, refresh_theme_widgets
+from ui_theme import add_tooltip, apply_app_icon, apply_theme, apply_ui_scale, refresh_theme_widgets, workspace_header
 from help_dialog import show_help
 from ui_layout import ColumnMemory, PaneMemory
 from window_controls import TitlebarPin
@@ -87,6 +87,7 @@ class BookmarkWindow:
         self.current_book = tk.StringVar(value="尚未选择 PDF")
         self.current_file_summary = tk.StringVar(value="选择查看与勾选写入相互独立。")
         self.page_status = tk.StringVar(value="点击书签查看目标页面（只读）")
+        self.preview_heading = tk.StringVar(value="原页预览")
         self.preview_zoom = tk.StringVar(value="100%")
         self.write_options_summary = tk.StringVar()
         self._write_options_open = False
@@ -124,7 +125,7 @@ class BookmarkWindow:
 
     def _build(self):
         self._build_menus()
-        self.workspace_tabs = ttk.Notebook(self.root)
+        self.workspace_tabs = ttk.Notebook(self.root, style="Workspace.TNotebook")
         self.workspace_tabs.place(x=0, y=0)
         self.root.bind("<Configure>", self._resize_workspace, add="+")
         self.main_page = ttk.Frame(self.workspace_tabs)
@@ -133,20 +134,43 @@ class BookmarkWindow:
         self.workspace_tabs.add(self.editor_page, text="目录工作台 · 生成与编辑")
         self._active_workspace = str(self.main_page)
         self.workspace_tabs.bind("<<NotebookTabChanged>>", self._workspace_changed)
-        outer = ttk.Frame(self.main_page, padding=10)
+        header = workspace_header(self.main_page, "书签写入")
+        self.current_book_label = ttk.Label(header, text=self.current_book.get(),
+                                            style="Document.TLabel", width=1, anchor="w")
+        self.current_book_label.grid(row=0, column=1, sticky="ew")
+        self.current_book_label.bind("<Configure>", self._fit_current_book, add="+")
+        self.file_path_button = ttk.Menubutton(header, text="文件位置", style="Document.TMenubutton")
+        self.file_path_button.grid(row=0, column=2, padx=(10, 0))
+        self.file_path_menu = tk.Menu(self.file_path_button, tearoff=False, postcommand=self._update_file_path_menu)
+        self.file_path_menu.add_command(label="复制 PDF 完整路径", command=self._copy_current_path)
+        self.file_path_menu.add_command(label="打开所在文件夹", command=self._open_current_folder)
+        self.file_path_button.configure(menu=self.file_path_menu)
+        self._current_file_tip = add_tooltip(self.file_path_button, self.file_detail.get())
+        self._current_book_tip = add_tooltip(self.current_book_label, self.file_detail.get())
+
+        outer = ttk.Frame(self.main_page, padding=(10, 8, 10, 4))
         outer.pack(fill="both", expand=True)
-        self.source_tabs = ttk.Notebook(outer)
+        body = self.main_body = ttk.Panedwindow(outer, orient="horizontal")
+        files = ttk.Frame(body, padding=(2, 0, 8, 0))
+        body.add(files, weight=1)
+        intake = ttk.Frame(files)
+        intake.pack(fill="x", pady=(0, 6))
+        ttk.Label(intake, text="处理列表", style="PaneHeading.TLabel").pack(side="left")
+        self.preview_button = ttk.Button(intake, text="1. 预览", command=self._preview, style="Accent.TButton")
+        self.preview_button.pack(side="right")
+        self.source_tabs = ttk.Notebook(files)
         self.source_tabs.pack(fill="x", pady=(0, 8))
-        single, batch, dropped = (ttk.Frame(self.source_tabs, padding=8) for _ in range(3))
+        single, batch, dropped = (ttk.Frame(self.source_tabs, padding=5) for _ in range(3))
         for frame, title in ((single, "单个 PDF"), (batch, "文件夹"), (dropped, "拖入 / 多文件")):
             self.source_tabs.add(frame, text=title)
         self._path_row(single, 0, "PDF", self.pdf, self._choose_pdf)
         self._path_row(single, 1, "目录 JSON", self.toc, self._choose_toc)
         self._path_row(batch, 0, "文件夹", self.folder, self._choose_folder)
-        recursive = ttk.Checkbutton(batch, text="包含子文件夹（处理 Zotero storage 时勾选）", variable=self.recursive)
-        recursive.grid(row=1, column=1, sticky="w", pady=5)
+        recursive = ttk.Checkbutton(batch, text="包含子文件夹", variable=self.recursive)
+        recursive.grid(row=1, column=0, columnspan=3, sticky="w", pady=4)
+        add_tooltip(recursive, "处理整个 Zotero storage 文件夹时勾选此项。")
         self.inputs.append(recursive)
-        ttk.Label(dropped, textvariable=self.drop_status).pack(anchor="w", pady=(0, 8))
+        ttk.Label(dropped, textvariable=self.drop_status, wraplength=240, justify="left").pack(anchor="w", pady=(0, 4))
         add = ttk.Button(dropped, text="添加多个 PDF / JSON…", command=self._choose_files)
         add.pack(side="left")
         clear = ttk.Button(dropped, text="清空列表", command=self._clear_inputs)
@@ -154,14 +178,14 @@ class BookmarkWindow:
         self.inputs.extend((add, clear))
         self.source_tabs.bind("<<NotebookTabChanged>>", self._source_tab_changed)
 
-        settings = self.settings_row = ttk.Frame(outer)
-        settings.pack(fill="x", pady=(0, 8))
-        settings.columnconfigure(1, weight=1)
-        self.write_options_button = ttk.Button(settings, text="写入设置 ▸", command=self._toggle_write_options)
-        add_tooltip(self.write_options_button, "展开已有书签策略、备份和清理选项；收起不改变当前设置。")
-        self.write_options_button.grid(row=0, column=0, sticky="nw", padx=(0, 8))
-        ttk.Label(settings, textvariable=self.write_options_summary, wraplength=790,
-                  style="Muted.TLabel").grid(row=0, column=1, sticky="w")
+        footer = ttk.Frame(outer)
+        footer.pack(side="bottom", fill="x", pady=(6, 0))
+        ttk.Separator(footer).pack(fill="x")
+        settings = self.settings_row = ttk.Frame(footer, padding=(5, 3))
+        settings.pack(fill="x")
+        settings.columnconfigure(0, weight=1)
+        ttk.Label(settings, textvariable=self.write_options_summary, wraplength=940,
+                  style="Muted.TLabel").grid(row=0, column=0, sticky="w")
         options = self.write_options = ttk.Frame(settings, padding=(8, 6, 8, 0))
         options.grid(row=1, column=0, columnspan=2, sticky="ew")
         options.grid_remove()
@@ -182,25 +206,26 @@ class BookmarkWindow:
         ttk.Label(options, text="备份目录留空时使用各 PDF 旁的 _backup；没有目录 JSON 时，可切换目录工作台生成并校对。",
                   wraplength=800).grid(row=3, column=0, columnspan=5, sticky="w", pady=(3, 0))
 
-        actions = ttk.Frame(outer)
-        actions.pack(fill="x", pady=(0, 8))
-        self.preview_button = ttk.Button(actions, text="1. 预览", command=self._preview, style="Accent.TButton")
-        self.preview_button.pack(side="left")
+        actions = self._write_actions = ttk.Frame(footer, padding=(8, 5), style="Paper.TFrame")
+        actions.pack(fill="x")
+        actions.columnconfigure(1, weight=1)
+        self.write_options_button = ttk.Button(actions, text="写入设置 ▸", command=self._toggle_write_options,
+                                               style="Secondary.TButton")
+        self.write_options_button.grid(row=0, column=0, padx=(0, 10))
+        add_tooltip(self.write_options_button, "展开已有书签策略、备份和清理选项；收起不改变当前设置。")
+        ttk.Label(actions, textvariable=self.status, width=1, wraplength=410, justify="left",
+                  style="PaperDetail.TLabel").grid(row=0, column=1, sticky="ew")
+        ttk.Label(actions, textvariable=self.selection_status, style="PaperDetail.TLabel").grid(
+            row=0, column=2, padx=10)
         self.write_button = ttk.Button(actions, text="2. 写入勾选的 PDF", command=self._write,
                                         style="Secondary.TButton", state="disabled")
-        self.write_button.pack(side="left", padx=8)
-        ttk.Label(actions, textvariable=self.selection_status, style="Muted.TLabel").pack(side="right", padx=6)
-        ttk.Label(outer, textvariable=self.status, wraplength=950,
-                  style="Muted.TLabel").pack(fill="x", pady=(0, 8))
+        self.write_button.grid(row=0, column=3)
 
-        body = self.main_body = ttk.Panedwindow(outer, orient="horizontal")
         body.pack(fill="both", expand=True)
-        files = ttk.Frame(body, padding=(0, 0, 8, 0))
-        body.add(files, weight=1)
-        select = ttk.Frame(files)
+        select = self._queue_tools = ttk.Frame(files)
         select.pack(fill="x", pady=(0, 6))
-        ttk.Label(select, text="处理列表").pack(side="left")
-        self.file_actions_button = ttk.Menubutton(select, text="列表操作")
+        ttk.Label(select, textvariable=self.file_filter_status, style="Muted.TLabel").pack(side="left")
+        self.file_actions_button = ttk.Menubutton(select, text="列表操作", style="Secondary.TMenubutton")
         self.file_actions_menu = tk.Menu(self.file_actions_button, tearoff=False)
         self.file_actions_button.configure(menu=self.file_actions_menu)
         self.file_actions_button.pack(side="right", padx=2)
@@ -209,10 +234,9 @@ class BookmarkWindow:
         self.file_actions_menu.add_command(label="清除选中", command=self._clear_file_selection)
         self.file_actions_menu.add_command(label="移除所选（保留文件）", command=self._remove_selected_files, accelerator="Delete")
         add_tooltip(self.file_actions_button, "Ctrl/Shift 多选；Ctrl+A 选中全部，Delete 仅移除列表项目。高亮选择与写入勾选相互独立；空格切换所选项目的写入勾选。")
+        self.file_actions_menu.add_separator()
         for label, checked in (("全勾选", True), ("全不勾", False)):
-            button = ttk.Button(select, text=label, command=lambda value=checked: self._set_all_checked(value))
-            button.pack(side="right", padx=2)
-            self.inputs.append(button)
+            self.file_actions_menu.add_command(label=label, command=lambda value=checked: self._set_all_checked(value))
         filter_row = ttk.Frame(files)
         filter_row.pack(fill="x", pady=(0, 4))
         filter_row.columnconfigure(1, weight=1)
@@ -220,37 +244,25 @@ class BookmarkWindow:
         self.file_search_entry = ttk.Entry(filter_row, textvariable=self.file_search, width=10)
         self.file_search_entry.grid(row=0, column=1, sticky="ew")
         self.file_search_entry.bind("<Return>", self._filter_file_items)
+        self.file_search_entry.bind("<Escape>", self._clear_file_filters)
         self.file_filter_combo = ttk.Combobox(filter_row, textvariable=self.file_filter, state="readonly", width=9,
                                               values=("全部", "缺少 JSON", "预览失败", "待写入", "写入失败", "已写入"))
         self.file_filter_combo.grid(row=0, column=2, padx=4)
         ttk.Button(filter_row, text="清除", width=4, style="Secondary.TButton",
                    command=self._clear_file_filters).grid(row=0, column=3)
-        ttk.Label(files, textvariable=self.file_filter_status, style="Muted.TLabel").pack(anchor="w", pady=(0, 4))
         add_tooltip(self.file_search_entry, "按 PDF 书名筛选，不改变配对和写入勾选。Ctrl+A 全选列表时会清除筛选；全勾选始终包含隐藏项目。")
         add_tooltip(self.file_filter_combo, "筛选仅改变显示；隐藏项目的写入勾选仍然有效。双击状态或右键可查看单本处理详情。")
         self.file_tree = ttk.Treeview(files, columns=("checked", "name", "state"), show="headings", height=15, selectmode="extended")
-        for column, title, width in (("checked", "写入", 42), ("name", "PDF", 170), ("state", "状态", 120)):
-            self.file_tree.heading(column, text=title)
-            self.file_tree.column(column, width=width, minwidth=width, stretch=column == "name")
+        for column, title, width, minimum in (("checked", "写入", 48, 48), ("name", "PDF", 185, 98),
+                                              ("state", "状态", 90, 80)):
+            anchor = "center" if column == "checked" else "w"
+            self.file_tree.heading(column, text=title, anchor=anchor)
+            self.file_tree.column(column, width=width, minwidth=minimum, stretch=column == "name", anchor=anchor)
+        ttk.Label(files, textvariable=self.current_file_summary, wraplength=265,
+                  style="Muted.TLabel").pack(side="bottom", anchor="w", pady=(5, 0))
         self._scrollers(files, self.file_tree)
-        self.empty_files = ttk.Label(files, text="拖入 PDF 和目录 JSON\n\n或在上方选择文件后点击「预览」",
-                                     justify="center", style="Muted.TLabel", wraplength=260)
-        current_file = ttk.Frame(files, padding=(0, 6, 0, 0))
-        current_file.pack(fill="x")
-        self.current_book_label = ttk.Label(current_file, textvariable=self.current_book,
-                                            style="Section.TLabel", wraplength=315)
-        self.current_book_label.pack(fill="x")
-        details = ttk.Frame(current_file)
-        details.pack(fill="x", pady=(3, 0))
-        self.file_path_button = ttk.Menubutton(details, text="文件路径", style="Secondary.TMenubutton")
-        self.file_path_button.pack(side="right")
-        self.file_path_menu = tk.Menu(self.file_path_button, tearoff=False, postcommand=self._update_file_path_menu)
-        self.file_path_menu.add_command(label="复制 PDF 完整路径", command=self._copy_current_path)
-        self.file_path_menu.add_command(label="打开所在文件夹", command=self._open_current_folder)
-        self.file_path_button.configure(menu=self.file_path_menu)
-        self._current_file_tip = add_tooltip(self.file_path_button, self.file_detail.get())
-        ttk.Label(details, textvariable=self.current_file_summary, style="Muted.TLabel",
-                  wraplength=230).pack(side="left", fill="x", expand=True)
+        self.empty_files = ttk.Label(files, text="拖入 PDF 和目录 JSON\n或在上方选择文件后预览",
+                                     justify="center", style="Hint.TLabel", wraplength=240)
         self.file_tree.bind("<Button-1>", self._file_click)
         self.file_tree.bind("<space>", self._file_space)
         for sequence in ("<Control-a>", "<Control-A>"):
@@ -267,40 +279,50 @@ class BookmarkWindow:
         logs = ttk.Frame(self.view_tabs, padding=6)
         self.view_tabs.add(preview, text="书签与目标页")
         self.view_tabs.add(logs, text="处理记录")
-        bookmarks = ttk.Frame(preview, padding=(6, 6, 3, 6))
+        bookmarks = ttk.Frame(preview, padding=(8, 7, 5, 5), style="Paper.TFrame")
         preview.add(bookmarks, weight=1)
-        ttk.Label(bookmarks, text="书签标题 / 印刷页 / PDF 页").pack(anchor="w", pady=(0, 5))
+        ttk.Label(bookmarks, text="书签目录", style="PaperHeading.TLabel").pack(anchor="w", pady=(0, 5))
         self.bookmark_tree = ttk.Treeview(bookmarks, columns=("printed", "pdf"), show="tree headings", selectmode="browse")
-        self.bookmark_tree.heading("#0", text="书签")
+        self.bookmark_tree.heading("#0", text="书签", anchor="w")
         self.bookmark_tree.column("#0", width=190, minwidth=130)
         for column, label in (("printed", "印刷页"), ("pdf", "PDF 页")):
-            self.bookmark_tree.heading(column, text=label)
-            self.bookmark_tree.column(column, width=65, minwidth=55, stretch=False, anchor="center")
+            self.bookmark_tree.heading(column, text=label, anchor="e")
+            self.bookmark_tree.column(column, width=65, minwidth=55, stretch=False, anchor="e")
         self._scrollers(bookmarks, self.bookmark_tree)
-        self.empty_bookmarks = ttk.Label(bookmarks, text="预览完成后，选择一本 PDF\n查看已有或待写入目录",
-                                         justify="center", wraplength=230, style="Muted.TLabel")
+        self.empty_bookmarks = ttk.Label(bookmarks, text="预览后选中一本 PDF 查看书签",
+                                         justify="center", wraplength=200, style="Hint.TLabel")
         self.bookmark_tree.bind("<<TreeviewSelect>>", self._selected_bookmark)
-        page = ttk.Frame(preview, padding=6)
+        page = ttk.Frame(preview, padding=(7, 7, 7, 4), style="Paper.TFrame")
         preview.add(page, weight=2)
-        page_tools = ttk.Frame(page)
-        page_tools.pack(fill="x", pady=(0, 4))
-        ttk.Label(page_tools, text="只读预览", style="Section.TLabel").pack(side="left")
-        for text, command in (("−", lambda: self._zoom_preview(1 / 1.2)),
-                              ("+", lambda: self._zoom_preview(1.2))):
-            button = ttk.Button(page_tools, text=text, width=3, command=command,
-                                 style="Secondary.TButton")
-            button.pack(side="left", padx=(4, 0))
-            add_tooltip(button, "滚轮上下浏览；Ctrl+滚轮缩放，范围 50%–300%。100% 恢复默认适宽预览。PDF 内容不会改写。")
-        self.preview_zoom_button = ttk.Button(page_tools, textvariable=self.preview_zoom, width=6,
+        preview_heading = ttk.Label(page, textvariable=self.preview_heading, width=1,
+                                    anchor="w", style="PaperHeading.TLabel")
+        preview_heading.pack(fill="x", pady=(0, 5))
+        self._preview_heading_tip = add_tooltip(preview_heading, "选择书签查看对应原页。")
+        page_tools = ttk.Frame(page, style="Paper.TFrame")
+        page_tools.pack(side="bottom", fill="x", pady=(4, 0))
+        zoom_group = ttk.Frame(page_tools, style="Zoom.TFrame", padding=2)
+        zoom_group.pack(side="left")
+        smaller = ttk.Button(zoom_group, text="−", width=3, command=lambda: self._zoom_preview(1 / 1.2),
+                             style="Zoom.TButton")
+        smaller.pack(side="left")
+        add_tooltip(smaller, "缩小原页预览。Ctrl+滚轮也可缩放，范围 50%–300%。")
+        self.preview_zoom_button = ttk.Button(zoom_group, textvariable=self.preview_zoom, width=6,
                                               command=lambda: self._zoom_preview(reset=True),
-                                              style="Secondary.TButton")
-        self.preview_zoom_button.pack(side="left", padx=(4, 0))
+                                              style="Zoom.TButton")
+        self.preview_zoom_button.pack(side="left")
         add_tooltip(self.preview_zoom_button, "显示当前缩放；点击恢复 100% 默认适宽。Ctrl+滚轮缩放。")
-        ttk.Label(page, textvariable=self.page_status, wraplength=480).pack(anchor="w", pady=(0, 5))
-        self.image_canvas = tk.Canvas(page, background="white", highlightthickness=0)
+        larger = ttk.Button(zoom_group, text="+", width=3, command=lambda: self._zoom_preview(1.2),
+                            style="Zoom.TButton")
+        larger.pack(side="left")
+        add_tooltip(larger, "放大原页预览。滚轮上下浏览，Ctrl+滚轮缩放。")
+        page_caption = ttk.Label(page_tools, textvariable=self.page_status, width=1, wraplength=190,
+                                 style="PaperDetail.TLabel")
+        page_caption.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        self._page_status_tip = add_tooltip(page_caption, self.page_status.get())
+        self.image_canvas = tk.Canvas(page, name="pdf_page_canvas", background="white", highlightthickness=0)
         self._scrollers(page, self.image_canvas)
-        self.empty_page = ttk.Label(self.image_canvas, text="选择一项目录查看目标页\n\n滚轮浏览 · Ctrl+滚轮缩放\nPDF 仅作只读预览",
-                                    justify="center", style="Muted.TLabel", wraplength=280)
+        self.empty_page = ttk.Label(self.image_canvas, text="选择一项书签查看目标页\n滚轮浏览 · Ctrl+滚轮缩放",
+                                    justify="center", style="ReaderHint.TLabel", wraplength=240)
         self.image_canvas.bind("<MouseWheel>", self._preview_wheel)
         self.image_canvas.bind("<Button-4>", self._preview_wheel)
         self.image_canvas.bind("<Button-5>", self._preview_wheel)
@@ -457,8 +479,10 @@ class BookmarkWindow:
         if self.focus_mode.get():
             self.source_tabs.pack_forget()
             self.write_options.grid_remove()
+            self.settings_row.pack_forget()
         else:
-            self.source_tabs.pack(fill="x", pady=(0, 8), before=self.settings_row)
+            self.source_tabs.pack(fill="x", pady=(0, 8), before=self._queue_tools)
+            self.settings_row.pack(fill="x", before=self._write_actions)
             if self._write_options_open:
                 self.write_options.grid()
         self.write_options_button.configure(
@@ -522,9 +546,9 @@ class BookmarkWindow:
 
     def _refresh_empty_states(self):
         if self.items:
-            self.empty_files.configure(text="没有符合书名或状态的项目\n\n清除筛选可查看全部。")
+            self.empty_files.configure(text="没有匹配的文件\n可清除筛选查看全部")
         else:
-            self.empty_files.configure(text="拖入 PDF 和目录 JSON\n\n或在上方选择文件后点击「预览」")
+            self.empty_files.configure(text="拖入 PDF 和目录 JSON\n或在上方选择文件后预览")
         for hint, target, empty in (
                 (self.empty_files, self.file_tree, not self.file_tree.get_children()),
                 (self.empty_bookmarks, self.bookmark_tree, not self.bookmark_rows),
@@ -593,9 +617,14 @@ class BookmarkWindow:
         if self._resize_after is not None:
             self.root.after_cancel(self._resize_after)
             self._resize_after = None
-        if self._workspace_size is None:
+        size = event.width, event.height
+        minimum = self.root.minsize()
+        if self._workspace_size is None or any(
+                current == limit and previous > current
+                for current, previous, limit in zip(size, self._workspace_size, minimum)):
+            # At a minimum dimension, bring edge actions back into view immediately.
             self._layout_workspace()
-        elif (event.width, event.height) != self._workspace_size:
+        elif size != self._workspace_size:
             # Keep border dragging responsive instead of laying out every pixel.
             self._resize_after = self.root.after(80, self._layout_workspace)
 
@@ -950,7 +979,13 @@ class BookmarkWindow:
 
     def _paint_item(self, iid):
         item = self.items[iid]
-        self.file_tree.item(iid, values=("☑" if item["checked"] else "☐", item["pdf_path"].name, item["state"]))
+        tags = ()
+        if item["error"] or "失败" in item["state"]:
+            tags = ("file_error",)
+        elif item["toc_path"] is None:
+            tags = ("pending",)
+        self.file_tree.item(iid, tags=tags, values=("☑" if item["checked"] else "☐",
+                                                   item["pdf_path"].name, item["state"]))
         if self._file_filter_after is None:
             self._file_filter_after = self.root.after_idle(self._filter_file_items)
         self._refresh_file_details(iid)
@@ -980,10 +1015,14 @@ class BookmarkWindow:
         self._update_write_button()
         return "break"
 
-    def _clear_file_filters(self):
+    def _clear_file_filters(self, event=None):
+        if event is not None and (self.busy or self.closed or
+                                  (not self.file_search.get() and self.file_filter.get() == "全部")):
+            return
         self.file_search.set("")
         self.file_filter.set("全部")
         self._filter_file_items()
+        return "break"
 
     def _file_double_click(self, event):
         if self.file_tree.identify_column(event.x) == "#3":
@@ -1191,12 +1230,33 @@ class BookmarkWindow:
         self._render_token += 1
         self._cancel_preview_render()
         self._preview_target = self._preview_position = None
+        self.preview_heading.set("原页预览")
+        self._preview_heading_tip.text = "选择书签查看对应原页。"
         self.bookmark_tree.delete(*self.bookmark_tree.get_children())
         self.bookmark_rows = {}
         self.image_canvas.delete("all")
         self._render_photo = self._displayed_page = None
         self.page_status.set("点击书签查看目标页面（只读）")
+        self._page_status_tip.text = self.page_status.get()
         self._refresh_empty_states()
+
+    def _fit_current_book(self, _event=None):
+        label = self.current_book_label
+        name = self.current_book.get()
+        width = label.winfo_width()
+        if width > 1:
+            font = tkfont.nametofont(ttk.Style(label).lookup("Document.TLabel", "font"), root=self.root)
+            if font.measure(name) > width - 4:
+                low, high = 0, len(name)
+                while low < high:
+                    mid = (low + high + 1) // 2
+                    if font.measure(name[:mid] + "…") <= width - 4:
+                        low = mid
+                    else:
+                        high = mid - 1
+                name = name[:low] + "…"
+        if label.cget("text") != name:
+            label.configure(text=name)
 
     def _selected_file(self, _event=None):
         self._update_write_button()
@@ -1207,12 +1267,16 @@ class BookmarkWindow:
             self.current_book.set("尚未选择 PDF")
             self.current_file_summary.set("选择查看与勾选写入相互独立。")
             self._current_file_tip.text = "选择 PDF 后可复制完整路径或打开所在文件夹。"
+            self._current_book_tip.text = self._current_file_tip.text
+            self._fit_current_book()
             return
         item = self.items[iid]
         self.file_detail.set(f"{item['pdf_path']}\n目录：{item['toc_path'] or '未匹配'}\n{item['error'] or item['state']}")
         self.current_book.set(item['pdf_path'].name)
         self.current_file_summary.set(item['error'] or item['state'])
         self._current_file_tip.text = self.file_detail.get()
+        self._current_book_tip.text = self.file_detail.get()
+        self._fit_current_book()
         self._clear_bookmarks()
         if item["plan"] is None:
             return
@@ -1220,7 +1284,8 @@ class BookmarkWindow:
         for index, bookmark in enumerate(item["plan"].preview):
             level, iid = bookmark["level"], f"bookmark_{index}"
             self.bookmark_tree.insert(parents.get(level - 1, ""), "end", iid=iid, text=bookmark["title"], open=True,
-                                      values=(bookmark["printed_page"] if bookmark["printed_page"] is not None else "直接", bookmark["pdf_page"]))
+                                      values=(bookmark["printed_page"] if bookmark["printed_page"] is not None else "直接", bookmark["pdf_page"]),
+                                      tags=("outline_heading",) if level == 1 else ())
             parents[level] = iid
             self.bookmark_rows[iid] = {**bookmark, "pdf_path": item["plan"].pdf_path}
         self._refresh_empty_states()
@@ -1234,6 +1299,8 @@ class BookmarkWindow:
         self.image_canvas.delete("all")
         self._render_photo = self._displayed_page = None
         self._preview_target = bookmark["pdf_path"], bookmark["pdf_page"]
+        self.preview_heading.set(f"原页预览 · {bookmark['title']}")
+        self._preview_heading_tip.text = f"{bookmark['title']}\nPDF 第 {bookmark['pdf_page']} 页"
         self._refresh_empty_states()
         self._preview_position = None
         self.image_canvas.xview_moveto(0)
@@ -1444,10 +1511,11 @@ class BookmarkWindow:
                         continue
                     if error:
                         self.page_status.set(f"无法显示目标页：{error}")
+                        self._page_status_tip.text = f"{pdf}\n{self.page_status.get()}"
                         self._append(f"页面预览失败 {pdf}：{error}")
                     else:
                         self.image_canvas.delete("all")
-                        self._render_photo = tk.PhotoImage(master=self.root, data=png)
+                        self._render_photo = preview_photo(self.root, png)
                         self.image_canvas.create_image(8, 8, image=self._render_photo, anchor="nw")
                         self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all"))
                         if self._preview_position is not None:
@@ -1455,7 +1523,8 @@ class BookmarkWindow:
                             self.image_canvas.yview_moveto(self._preview_position[1])
                             self._preview_position = None
                         self._displayed_page = page
-                        self.page_status.set(f"{Path(pdf).name} · PDF 第 {page} 页（只读）")
+                        self.page_status.set(f"PDF 第 {page} 页（只读）")
+                        self._page_status_tip.text = f"{pdf}\n{self.page_status.get()}"
                 elif kind == "write_item":
                     iid, state = payload
                     self.items[iid]["state"] = state

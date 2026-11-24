@@ -154,13 +154,17 @@ class UIScaleHelpTests(unittest.TestCase):
     def test_help_late_open_and_theme_switches_use_shared_ui_font(self):
         apply_ui_scale(self.root, 125)
         dialog = show_help(self.root)
+        reading_font = tkfont.nametofont("PdfBody", root=self.root)
+        large = reading_font.metrics("linespace")
         for theme in PALETTES:
             apply_theme(self.root, theme)
-            self.assertEqual(str(dialog.usage.cget("font")), "TkDefaultFont")
-            self.assertEqual(str(ttk.Style(self.root).lookup("TEntry", "font")), "TkDefaultFont")
+            self.assertEqual(str(dialog.usage.cget("font")), reading_font.name)
+            self.assertEqual(str(ttk.Style(self.root).lookup("TEntry", "font")), reading_font.name)
+            self.assertEqual(reading_font.metrics("linespace"), large)
             self.assertEqual(self.root._pdf_ui_scale, 125)
         apply_ui_scale(self.root, 100)
         self.assertEqual(self.root._pdf_ui_scale, 100)
+        self.assertLess(reading_font.metrics("linespace"), large)
 
     def test_help_search_settings_and_close_remain_accessible_in_large_text_at_minimum_size(self):
         dialog = show_help(self.root)

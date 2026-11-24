@@ -13,8 +13,6 @@ import hashlib
 import os
 from pathlib import Path
 
-import pymupdf
-
 from config_manager import (DEFAULT_CONFIG, load_config, sanitize_settings,
                             save_config, settings_path)
 
@@ -144,6 +142,15 @@ def dropped_pairs(paths) -> list[tuple[Path, Path | None]]:
     return result
 
 
+def preview_photo(master, png: bytes):
+    """Decode into Tk pixels without keeping a second copy of the cached PNG."""
+    from tkinter import PhotoImage
+
+    photo = PhotoImage(master=master, data=png, format="png")
+    photo.configure(data="")
+    return photo
+
+
 def render_page(pdf_path, pdf_page: int, max_width: int = 800, max_height: int = 1000, *, max_scale: float = 2.0) -> bytes:
     """Return a PNG preview; no document write, OCR or persistent image cache."""
     if type(pdf_page) is not int or pdf_page < 1:
@@ -152,6 +159,8 @@ def render_page(pdf_path, pdf_page: int, max_width: int = 800, max_height: int =
         raise ValueError("预览尺寸必须是 1–8192 的整数。")
     if not 0 < max_scale <= 6:
         raise ValueError("预览比例须大于 0 且不超过 6。")
+    import pymupdf
+
     with pymupdf.open(str(pdf_path)) as document:
         if not document.is_pdf or document.needs_pass:
             raise ValueError("无法预览此 PDF。")

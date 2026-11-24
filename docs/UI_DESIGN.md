@@ -1,17 +1,82 @@
 # 界面设计与兼容约定
 
-更新日期：2026-10-24。本页记录已汇入v1.12.0的“均衡清爽与校对辅助”，以及v1.8.0界面改进、v1.8.1共用置顶、v1.9.0交互优化、v1.10.0共享专注和图标、纳入v1.11.0的菜单精简和快捷键设置。A/B/C阶段已验收并正式发布，公开稳定版为v1.12.0；既有历史标签和附件保持原内容。实际覆盖及局限以发行页、Actions和验证记录为准。
+更新日期：2026-11-24。本页同时记录 v1.13.0 的界面与连续校对改版，以及已汇入正式 v1.12.0 的均衡清爽与校对辅助。早期主题、共享置顶、专注和快捷键设计保留在各节。验证范围见[验证记录](../VALIDATION.md)。
 
 ## 设计方向
 
 围绕“选择PDF → 生成或导入目录 → 校对 → 保存JSON → 预览并写入”组织界面。沿用既有主界面和目录工作台两个标签页，保留原功能、选项、快捷键、拖放和安全确认；经用户确认移除的重复入口由现有页面控件与菜单承接。
 
-- 统一蓝灰背景、清楚的输入边界和表格层次。蓝色只突出预览、保存等主要操作；辅助提示使用较弱但可读的文字颜色。
-- 写入设置集中分组，状态独立成行；工作台的搜索与筛选分行，减少横向拥挤。保留系统字体及默认字号，新增可选三档界面字号，统一小范围留白。
+- 工作区、目录内容面和书页衬底分层配色。当前标签有下划线，选中项有整行底色，主要操作有实色按钮。次要操作与提示在三种主题中各自保持可读。
+- 写入设置、范围和执行反馈集中在底部。目录工作台的查找、筛选和显示方式贴近目录，翻页和缩放贴近书页。界面提供三档字号。
 - 两页共用外观选择，默认浅色；本地优化版在左上“视图 → 外观”统一日间/夜间/护眼，原设置文件保存light/dark/eye_care，schema仍为1。主题覆盖本程序控件、编辑区、预览背景及帮助窗口；PDF页面图片保留原像素，Windows文件选择和系统提示框由系统绘制。
 - 切页共用当前窗口位置、大小和最大化状态，启动时统一最小1000×760；连续拖宽期间合并内部布局，停止变化约80毫秒后以最终尺寸排版，排版本身仍需额外时间。短暂保持旧内容布局是避免每像素重排的取舍。
 
 - 原有交互优先：目录列表Enter仅确认用户选中的条目并定位下一待核对项，支持多选、撤销和草稿；搜索框Enter查找，编辑框Enter只提交编辑。无效目标页或空标题整批拒绝，外观整理不取消人工确认或自动写入PDF。
+
+<a name="workspace-review-design"></a>
+
+## v1.13.0 界面与连续校对改版（2026-11-24）
+
+用户试用初稿后指出，两页的轮廓与旧版太相似。本轮沿实际阅读次序重新分区。写入页左侧集中选文件、筛选和处理队列，中间列出书签，右侧显示只读原页。设置、勾选数量、处理结果与写入放在底部。两个工作页以同一文档栏显示当前任务和书名，一级条目用较重字形，与正文等大小。原页采用独立衬底。日间使用墨青文档栏与浅灰纸面，夜间使用深青与石墨灰，护眼使用深灰绿与浅灰绿。标题、分区名和正文按系统字体派生，随三档字号缩放。
+
+校对页在目录表上方右侧固定放置「目录栏数」和「标题编号」。专注模式和来源折叠时均可选择，左侧状态提示随可用宽度换行。首次成功载入目录后收起文件来源、页范围和识别按钮。左侧进度条显示全书确认数，查找结果数和下一待核对遵循当前筛选。右侧上沿用于翻页与定位，下沿用于缩放与识别。保存到原目录时显示目标路径，选择自定义时显示目录编辑框。
+
+工作台的进度针对整份目录，下一待核对仍按当前可见范围定位。问题清单复用诊断及条目定位；查无匹配时的清除筛选复用原浏览上下文。暂存提示和保存原因各占自己的状态区。当当前书已有暂存且尚未载入目录时，提供清楚的恢复入口；恢复仍执行原 PDF 身份验证，确认状态及未完成输入随草稿恢复。保存被拦住后可继续在底部查看原因。
+
+- 参考 Apple 的桌面阅读布局和工具栏分组、Microsoft 的 Windows 命令位置与状态规则，让目录导航贴近列表、翻页与缩放贴近预览，并沿用 Windows 原生菜单。 [Apple「预览」](https://support.apple.com/guide/preview/view-pdfs-and-images-prvw11470/mac) · [Microsoft 命令规范](https://learn.microsoft.com/en-us/windows/apps/design/basics/commanding-basics)
+- 从《Refactoring UI》和 Taste Skill 借鉴以内容组织边界、留白和文字权重的设计方法。评审方式参考 Impeccable 和 Design Architect，优先核对真实画面、重要任务和既有约束。 [Refactoring UI](https://www.refactoringui.com/) · [Taste Skill](https://github.com/Leonxlnx/taste-skill) · [Impeccable](https://github.com/pbakaus/impeccable) · [Design Architect](https://github.com/directiveforge/directiveforge/blob/main/templates/skills/design/design-architect/SKILL.md)
+- 参考抖音团队对控件和不同反馈方式的说明。书名或路径的补充信息用悬停提示，校对和暂存进度在区域内更新，保存受阻时持续显示原因；实际写入仍需原有确认。抖音视频可核对公开简介，此处依据也包括可直接阅读的组件文档。[抖音公开案例](https://www.douyin.com/video/7699199951179418907) · [Semi Design 工具提示](https://semi.design/zh-CN/show/tooltip) · [Semi Design 确认反馈](https://semi.design/zh-CN/feedback/popconfirm)
+- 参考 Ruoxi Wang 公开的小红书 B 端 UI Kit 案例中按内容自动分配空间、同类控件统一处理的做法。两页共用文档栏，进度用计数和细条一起表达。阅读区的分栏参考 Apple 的列表与详情关系。[设计师的项目记录](https://www.ruoxiwang.net/ui-kit-xiaohongshu-chinese) · [Apple 分栏指南](https://developer.apple.com/design/human-interface-guidelines/split-views)
+
+上述来源用于设计和验收，代码由本项目既有 Tk/Ttk 控件和回调承接。使用步骤见[操作说明](USAGE.md#workspace-review-usage)。对比度检查与 Windows 实窗验收分开记录。
+
+### 三种外观的阅读与定位（2026-11-24，本地第三稿）
+
+上一稿护眼实屏中，目录正文和纸面的配色已经有 9.92∶1，原页空白区的提示只有 4.46∶1。字号较小时，表头、章节、正文都挤在相近的灰绿底色上，阅读仍然费力。三种主题分别配色；写入、校对、专注模式、详细表格和目录树共用相同的文字层级。
+
+| 主题 | 目录正文与纸面 | 空白预览提示与衬底 | 选中行文字与底色 |
+| --- | --- | --- | --- |
+| 日间 | 16.22 → 16.40 | 4.90 → 7.51 | 6.45 → 9.19 |
+| 夜间 | 10.98 → 12.45 | 9.20 → 11.36 | 6.70 → 7.51 |
+| 护眼 | 9.92 → 13.49 | 4.46 → 7.77 | 7.82 → 10.28 |
+
+表中为前后两稿配色按 sRGB 相对亮度计算的比值。正文、提示、待核对项与选择态以 7∶1 为设计目标。日间用白色内容面与墨蓝选择态；夜间用石墨内容面、浅色文字、亮蓝焦点边和深蓝勾选底；护眼以深墨绿文字配灰绿工作区，目录纸面和输入区逐级提亮。各主题以字重和整行底纹标出一级条目，普通条目留出行间距。Windows 上优先选本机的微软雅黑 UI，保留系统回退，行高随实际字体和三档字号调整。原生菜单沿用系统菜单色，PDF 页面沿用原始渲染。
+
+| 实际读到的材料 | 采用的设计与操作 |
+| --- | --- |
+| [Microsoft Fluent UI 的文字颜色定义](https://github.com/microsoft/fluentui/blob/master/packages/theme/src/types/ISemanticTextColors.ts) 与 [Fluent 2 排版](https://fluent2.microsoft.design/typography) | 分开设计正文、次要、禁用与按钮文字。夜间把勾号底色和焦点轮廓拆开，让白勾和外边缘同时可见。 |
+| [Ant Design 表格源码](https://github.com/ant-design/ant-design/blob/master/components/table/style/index.ts) 与[数据展示指南](https://ant.design/docs/spec/data-display-cn) | 表头、章行和选择行各有底色。缺目录和失败沿用明确文字，分别配待处理色和错误色；文件列表优先把伸缩宽度留给书名。 |
+| [IBM Carbon 表格](https://carbondesignsystem.com/components/data-table/usage/) 与[抖音后台表格案例](https://www.douyin.com/video/7648662581969071707) | 搜索和状态筛选紧贴所作用的列表。查找框有可见的「标题」，筛选生效时提供就地清除。抖音采用[聚合页可读的公开视频文稿](https://www.douyin.com/shipin/7276650967637100579)中关于订单表搜索、筛选和状态的段落。 |
+| [小红书聚光报表手册](https://ad.xiaohongshu.com/next_help/docs/eae1a1c3fbf7b7390e7aa5657161638a)、[小红书无障碍实践](https://developer.android.com/stories/apps/xiaohongshu)与[设计师的 B 端 UI Kit](https://www.ruoxiwang.net/ui-kit-xiaohongshu-chinese) | 把局部结果放回所属区域，筛选有匹配或无匹配都能退出。书名框、目录查找框用同一个 Esc 操作；表格加底纹后仍用文字明确确认与失败状态。 |
+| [SumatraPDF 导航快捷键](https://www.sumatrapdfreader.org/docs/Keyboard-shortcuts) | 借鉴浏览后返回阅读位置的操作。在已有「定位」菜单加入「回到所选目标页」，由当前选中条目确定页码。写入页的原页栏标出对应书签，悬停可读完整长标题。 |
+| [WCAG 增强文字对比度](https://www.w3.org/WAI/WCAG22/Understanding/contrast-enhanced.html)与[非文字对比度](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html) | 分别检查文字和控件边缘。验收还须看真实 Windows 字形、焦点、滚动和缩放时的显示。 |
+
+第三稿的实屏和操作回归进展见[验证记录](../VALIDATION.md#workspace-review-validation)。
+
+### 第四稿 · 控件与纸面
+
+两页的文档栏改用接近工作区的底色，让长书名、目录和原页先进入视线。日间用暖白和灰蓝，夜间用石墨灰和柔和的鼠尾草绿，护眼用略深的灰橄榄工作区，目录面和输入区逐级提亮。外观应用到完整与专注布局、表格与树形显示及弹出的帮助窗口。PDF 原页一直按原色渲染。
+
+| 三主题设计色对比度 | 目录正文 / 内容面 | 预览提示 / 衬底 | 选中文字 / 行底 |
+| --- | ---: | ---: | ---: |
+| 日间 | 15.01∶1 | 7.56∶1 | 8.84∶1 |
+| 夜间 | 12.37∶1 | 10.66∶1 | 8.04∶1 |
+| 护眼 | 11.21∶1 | 7.19∶1 | 9.14∶1 |
+
+按钮和输入框使用小圆角，正常、悬停、键盘聚焦和按下各有对应的绘制状态。只读下拉框与菜单按钮使用相同形状的箭头，输入错误仍保留错误色边缘。两页的缩放放在一个连续的小工具组内，依次为缩小、当前比例、放大。比例按钮沿用各页原有的重置操作；全书校对进度使用细线并配确认数。
+
+- GitHub 上的两套桌面主题提供了同一个 Tk 控件按状态更换外观的实现例子。本项目自行绘制小尺寸控件，沿用 Tk 的按钮、下拉、滚动条和输入行为。主操作和次要操作的区分参考 Fluent。[Sun Valley 主题源文件](https://github.com/rdbende/Sun-Valley-ttk-theme/blob/main/sv_ttk/theme/light.tcl) · [Azure 主题源文件](https://github.com/rdbende/Azure-ttk-theme/blob/main/theme/light.tcl) · [Fluent 按钮指南](https://fluent2.microsoft.design/components/web/react/core/button/usage)
+- 小红书开放平台的设计指南分别讲操作反馈、层级和一致性。两页在同一位置表达缩放顺序，选中用下划线或行底色，悬停与键盘聚焦分别反馈。[清晰](https://miniapp.xiaohongshu.com/doc/DC772457) · [易用](https://miniapp.xiaohongshu.com/doc/DC993962) · [一致](https://miniapp.xiaohongshu.com/doc/DC357043)
+- 抖音教程公开页里，Natt 的可读文稿用一个开关的两种状态讲解交互，相关条目还展示了按钮状态组件。本项目据此逐项处理可点击、已选择与键盘焦点。此处参考范围为公开文稿及作品介绍。[抖音公开文稿和作品列表](https://www.douyin.com/shipin/7294191145331148839)
+
+### 第五稿 · 工作页和操作反馈
+
+2026-11-24 查阅时，Apple 的正式版本列表标示 iOS 27.2.1。此次借鉴的是 Apple 持续维护的交互指南，其中的分组、即时响应和减弱动态都适合桌面校对。[Apple 版本列表](https://support.apple.com/en-us/100100) · [分段控件](https://developer.apple.com/design/human-interface-guidelines/segmented-controls) · [工具栏](https://developer.apple.com/design/human-interface-guidelines/toolbars) · [动效](https://developer.apple.com/design/human-interface-guidelines/motion)
+
+- 两个工作页构成一组互斥选择，当前页同时显示圆角选中面和短线。页内标签使用较轻的底线。翻页与缩放按作用分组，控制位置及鼠标、键盘命中区域固定。下拉箭头响应原生弹出状态，按钮文字在按下时移动一个像素。
+- 工具区用实色表面和细边线与原页分层。长时间阅读时，书页周围有稳定的衬底。列表与原页可以完整显示时隐去滚动滑块，出现溢出时恢复滚动提示。[Apple 材质指南](https://developer.apple.com/design/human-interface-guidelines/materials)
+- 已确认数立即刷新。用户在同一本书上改变确认数时，进度线可用约 120 毫秒过渡，连续操作会接续最新进度。离开工作页即结束过渡。关闭 Windows「动画效果」时直接呈现最终进度。[Windows 动画参数](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)
+- Windows 上的 Tk 按图块平铺控件底图。使用宽实色中心并单独保留圆角，减轻大面积重绘。主题资源按使用建立并在本次会话内复用。[Tk 图像元素绘制实现](https://github.com/tcltk/tk/blob/core-8-6-branch/generic/ttk/ttkImage.c)
 
 <a name="balanced-review-design"></a>
 

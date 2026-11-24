@@ -142,6 +142,7 @@ class EditorPolishTests(unittest.TestCase):
         self.choose(0, 2)
         self.assertIn("已选 2", self.editor.summary.get())
         self.assertIn("已确认 2/4", self.editor.summary.get())
+        self.assertIn("待核对 2", self.editor.summary.get())
         self.editor.clear_selection()
         self.assertIn("已选 0", self.editor.summary.get())
         before = self.snapshot()
@@ -153,6 +154,56 @@ class EditorPolishTests(unittest.TestCase):
         self.editor._filter_changed()
         self.assertFalse(self.editor.empty_directory.winfo_manager())
         self.assertEqual(self.snapshot(), before)
+
+    def test_clear_filter_action_restores_directory_and_its_existing_view(self):
+        self.load(levels=(1, 2, 1, 1))
+        self.editor.view_mode.set("目录树")
+        self.editor._view_changed()
+        self.choose(0)
+        self.editor.tree.item("0", open=False)
+        before = self.snapshot()
+        self.editor.filter_mode.set("未知页码")
+        self.editor.search_text.set("没有这个标题")
+        self.editor._filter_changed()
+        self.assertEqual(self.editor.clear_filter_button.winfo_manager(), "place")
+        self.editor.clear_filter_button.invoke()
+        self.assertEqual(self.editor.search_text.get(), "")
+        self.assertEqual(self.editor.filter_mode.get(), "全部")
+        self.assertEqual(self.editor.view_mode.get(), "目录树")
+        self.assertFalse(self.editor.tree.item("0", "open"))
+        self.assertEqual(self.editor.tree.selection(), ("0",))
+        self.assertEqual(self.snapshot(), before)
+        self.assertFalse(self.editor.clear_filter_button.winfo_manager())
+
+    def test_matching_filter_can_be_cleared_by_keyboard_or_visible_action(self):
+        self.choose(2)
+        original = self.snapshot()
+        for keyboard in (True, False):
+            self.editor.search_text.set("Row 1")
+            self.press(self.editor.search_entry, "<Return>")
+            self.assertEqual(self.editor.tree.get_children(), ("1",))
+            self.assertEqual(self.editor.clear_results_button.winfo_manager(), "grid")
+            if keyboard:
+                self.press(self.editor.search_entry, "<Escape>")
+            else:
+                self.editor.clear_results_button.invoke()
+            self.assertFalse(self.editor.clear_results_button.winfo_manager())
+            self.assertEqual(self.editor.tree.selection(), ("2",))
+            self.assertEqual(self.snapshot(), original)
+
+    def test_location_returns_to_selection_after_browsing_the_contents(self):
+        self.choose(2)
+        original = self.snapshot()
+        self.editor.show_toc_page()
+        self.assertEqual(self.editor.preview_page.get(), "1")
+        self.editor._update_location_menu()
+        self.editor.preview_location_menu.invoke("回到所选目标页")
+        self.assertEqual(self.editor.preview_page.get(), "3")
+        self.assertEqual(self.editor._preview_kind, "target")
+        self.assertEqual(self.snapshot(), original)
+        self.editor.clear_selection()
+        self.editor._update_location_menu()
+        self.assertEqual(self.editor.preview_location_menu.entrycget("回到所选目标页", "state"), "disabled")
 
     def test_compact_preview_keeps_region_tools_and_one_live_zoom_indicator(self):
         def descendants(widget):

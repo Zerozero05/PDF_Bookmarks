@@ -74,21 +74,27 @@ class EditorOptionsTests(unittest.TestCase):
 
     def choose(self, style):
         label = next(label for label, value in toc_editor.SECTION_STYLES.items() if value == style)
-        self.editor.section_style.set(label)
-        self.editor._section_style_changed()
+        self.editor.section_style_combo.set(label)
+        self.editor.section_style_combo.event_generate("<<ComboboxSelected>>")
         self.root.update()
 
     def titles(self):
         return [entry.title for entry in self.editor.draft.entries]
 
     def test_generation_uses_layout_and_selected_numbering_and_readonly_controls(self):
-        self.editor.column_mode.set("双栏")
+        columns = self.editor.column_mode_combo
+        self.assertEqual(tuple(columns["values"]), ("自动", "单栏", "双栏"))
+        self.assertEqual(tuple(self.editor.section_style_combo["values"]), tuple(toc_editor.SECTION_STYLES))
+        columns.set("双栏")
         self.choose("section")
         generate = self.load_auto()
         self.assertEqual(generate.call_args.kwargs["column_mode"], "double")
         self.assertEqual(self.titles()[2:4], ["1. 基本概念", "2. 更多概念"])
         self.assertEqual(self.titles()[-1], "1. 定义")
         self.assertFalse(any(entry.confirmed for entry in self.editor.draft.entries))
+        self.assertFalse(self.editor.source_tabs.winfo_ismapped())
+        self.assertTrue(columns.winfo_ismapped())
+        self.assertTrue(self.editor.section_style_combo.winfo_ismapped())
         for control in self.editor._controls:
             if isinstance(control, ttk.Combobox):
                 self.assertEqual(str(control.cget("state")), "readonly")
@@ -182,6 +188,11 @@ class EditorOptionsTests(unittest.TestCase):
 
         inspect(self.editor.window)
         self.assertEqual(found, wanted)
+        for selector in (self.editor.column_mode_combo, self.editor.section_style_combo):
+            self.assertTrue(selector.winfo_ismapped())
+            left = selector.winfo_rootx() - self.editor.window.winfo_rootx()
+            self.assertGreaterEqual(left, 0)
+            self.assertLessEqual(left + selector.winfo_width(), self.editor.window.winfo_width())
         self.assertGreater(self.editor.canvas.winfo_height(), 100)
 
 
