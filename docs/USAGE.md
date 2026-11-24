@@ -1,6 +1,6 @@
 # PDF_Bookmarks 完整使用说明
 
-本页说明 PDF_Bookmarks 的使用方式及两种GUI打包形式。当前稳定下载为 [v1.12.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.12.0)，已完成正式发布与附件核验。共享专注、分栏/列宽记忆、右键操作、F1说明及图标继续保留；正式下载以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)实际附件为准，全部历史版保留。首页见 [README](../README.md)，发布与命名见 [MAINTENANCE](MAINTENANCE.md)。
+本页说明 PDF_Bookmarks 的使用方式及两种GUI打包形式。当前稳定下载为 [v1.13.0](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.13.0)，已完成正式发布与附件核验。共享专注、分栏/列宽记忆、右键操作、F1说明及图标继续保留；正式下载以 [Releases](https://github.com/Zerozero05/PDF_Bookmarks/releases)实际附件为准，全部历史版保留。首页见 [README](../README.md)，发布与命名见 [MAINTENANCE](MAINTENANCE.md)。
 
 以下用法对应 v1.11.0 的菜单精简和快捷键设置：顶部为“编辑 / 视图 / 帮助”，工作台从标签页进入，更新位于“帮助 → 版本与更新…”，F1 可设置常用工作台快捷键。旧发行版仍保留当时的文件菜单及页头按钮，下载不会因本文更新而替换。本页工作台快捷键按默认值说明；自定义后以 F1 表中显示的当前键位为准。
 

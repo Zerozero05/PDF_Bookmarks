@@ -2,22 +2,22 @@
 
 为普通 PDF 添加多级书签，可独立使用，也适配 Zotero 附件。支持导入目录 JSON，或从文字、扫描 PDF 识别目录，经预览与人工校对后写入，保持原 PDF 文件名和路径。
 
-当前稳定版：**v1.12.0**，已通过正式云端门禁并公开核验；下载见下方附件。支持 **Windows 10/11 x64**，中文界面，兼容中文文件名和书签。OCR 在本机运行，不上传 PDF，不需要 API Key。
+当前稳定版为 **v1.13.0**，支持 **Windows 10/11 x64**。程序提供中文界面，支持中文文件名和书签。OCR 在本机运行，无需上传 PDF 或提供 API Key。
 
-[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.12.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
+[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.13.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
 
 ## 选择下载方式
 
 | 下载 | 运行方式与区别 |
 | --- | --- |
-| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/PDF_Bookmarks_v1.12.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
-| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/PDF_Bookmarks_v1.12.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
-| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/PDF_Bookmarks_v1.12.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
-| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/PDF_Bookmarks_v1.12.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
+| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
+| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
+| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
 两种 GUI 功能相同，无需安装 Python，共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json` 及本机草稿。便携版主要省去启动解包，不保证 OCR 或 PDF 写入更快；“便携”指免安装，设置与草稿仍保存在当前电脑。
 
-下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.12.0/PDF_Bookmarks_v1.12.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
+下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
 
 ## 快速使用
 
@@ -63,7 +63,7 @@
 
 | 版本／记录 | 日期 | 主要变更 |
 | --- | --- | --- |
-| v1.13.0（发布准备中） | 2026-11-24 | 1、写入页依次选择文件、书签和原页，底部核对勾选。<br>2、目录表上方常显栏数、标题编号，校对区集中进度、筛选、问题和草稿，可回到所选目标页。<br>3、三主题加强文字与选中行对比，一级目录加粗，可用 Esc 清除筛选。<br>4、工作页选中标记、翻页和缩放分组，校对进度跟随 Windows 动画设置。<br>5、减少切页重绘，按需加载 PDF 引擎，释放已显示预览的压缩图片副本。<br>[本次完整记录](CHANGELOG.md#v1-13-0) |
+| v1.13.0 | 2026-11-24 | 1、写入页依次选择文件、书签和原页，底部核对勾选。<br>2、目录表上方常显栏数、标题编号，校对区集中进度、筛选、问题和草稿，可回到所选目标页。<br>3、三主题加强文字与选中行对比，一级目录加粗，可用 Esc 清除筛选。<br>4、工作页选中标记、翻页和缩放分组，校对进度跟随 Windows 动画设置。<br>5、减少切页重绘，按需加载 PDF 引擎，释放已显示预览的压缩图片副本。<br>[本次完整记录](CHANGELOG.md#v1-13-0) |
 | v1.12.0 | 2026-10-24 | 1、均衡布局、三档界面字号、连续校对及F1检索。<br>2、目录问题、映射影响、来源对照与所选标题批处理。<br>3、列表筛选/单本详情、局部OCR差异与保护、缓存和响应优化。<br>4、兼容原数据/编号/安全写入；两轮云端门禁、真实升级回滚及七附件公开核验通过。<br>[本次完整记录](CHANGELOG.md#v1-12-0) |
 | 均衡清爽与校对辅助（本地开发） | 2026-10-23 | 1、三主题、三档字号与F1检索，小窗辅助区按需滚动，保留简洁菜单及原快捷键。<br>2、保持目录浏览状态，新增问题清单、字段反馈及映射影响预览。<br>3、原目录行对照、选中标题批量预览与一次撤销。<br>4、主列表书名/状态筛选及单本详情，隐藏勾选仍参与写入确认。<br>5、2026-10-24修复手工标题遮蔽真实OCR候选，r3实屏验证默认保护、明确采纳及一次撤销还原。<br>6、会话共享64 MiB缓存预算与诊断，80步撤销保持；本地四构建核验通过，正式下载仍为 v1.11.0。<br>[本次完整记录](CHANGELOG.md#balanced-review-2026-10-23) |
 | v1.11.0 | 2026-10-22 | 1、精简三菜单与重复页头，保留各功能的页面和局部入口。<br>2、Ctrl+N 添加、Alt+↑/↓ 移动，F1 可设置15项常用工作台快捷键并恢复默认。<br>3、修复帮助长详情挤出底栏；正式云端门禁及七附件核验通过；已更正程序内更新说明及对应校验值。<br>[本次完整记录](CHANGELOG.md#v1-11-0) |
@@ -92,7 +92,7 @@
 | v1.1（本地历史） | 2026-10-04 | 1、新增可选备份及自定义备份目录。<br>2、支持成功写入后清理茉莉花大纲缓存。<br>[本次完整记录](CHANGELOG.md#v1-1) |
 | 基础版本（本地历史） | 2026-10-03 | 1、根据 JSON 添加多级书签，支持偏移及分段映射。<br>2、提供 GUI/CLI、预览批量、备份及校验后原地写入。<br>[本次完整记录](CHANGELOG.md#initial-version) |
 
-[查看全部完整更新记录](CHANGELOG.md)。目录快捷键设置及菜单与页头精简两条开发记录已汇入 v1.11.0；其他历史“未发布”条目保留当时状态并已汇入 v1.10.0。均衡清爽与校对辅助已汇入正式 v1.12.0，当前稳定下载已同步；历史开发条目保留当时状态。全部历史版本及其记录保留。
+[查看全部完整更新记录](CHANGELOG.md)。目录快捷键设置及菜单与页头精简两条开发记录已汇入 v1.11.0；其他历史“未发布”条目保留当时状态并已汇入 v1.10.0。均衡清爽与校对辅助已汇入 v1.12.0，两页界面与连续校对更新已汇入 v1.13.0。全部历史版本及其记录保留。
 
 ## 程序更新
 
