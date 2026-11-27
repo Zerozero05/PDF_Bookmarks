@@ -199,7 +199,7 @@ class WorkspaceTabTests(unittest.TestCase):
         self.main.editor_settings["editor_geometry"] = "1360x980+160+120"
         self.assert_window_stays(self.main._open_editor)
         self.assertIsNotNone(self.main.editor)
-        self.assertEqual(self.root.minsize(), (1000, 760))
+        self.assertEqual(self.root.minsize(), (1000, 720))
         for _ in range(12):
             self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.main_page))
             self.assert_window_stays(lambda: self.main.workspace_tabs.select(self.main.editor_page))
@@ -538,7 +538,7 @@ class WorkspaceTabTests(unittest.TestCase):
         self.assertTrue(self.root.attributes("-topmost"))
         self.assert_window_stays(self.main._open_editor)
         self.assertTrue(self.root.attributes("-topmost"))
-        self.assertEqual(self.root.minsize(), (1000, 760))
+        self.assertEqual(self.root.minsize(), (1000, 720))
 
     def test_topmost_change_from_either_page_keeps_one_shared_state_and_unfinished_work(self):
         self.root.deiconify()

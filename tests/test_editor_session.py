@@ -298,6 +298,15 @@ class UndoHistoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             history.record({"v": float("nan")})
 
+    def test_history_preserves_unicode_and_existing_json_key_order_semantics(self):
+        history = UndoHistory()
+        title = "第三章 𝜆\ud800"
+        history.reset({"title": title, "confirmed": False})
+        self.assertFalse(history.record({"confirmed": False, "title": title}))
+        self.assertTrue(history.record({"title": title, "confirmed": True}))
+        self.assertEqual(history.undo(), {"title": title, "confirmed": False})
+        self.assertEqual(history.redo(), {"title": title, "confirmed": True})
+
 
 if __name__ == "__main__":
     unittest.main()

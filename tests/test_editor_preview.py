@@ -97,6 +97,22 @@ class EditorPreviewTests(unittest.TestCase):
             render.assert_not_called()
         self.assertEqual(self.editor._preview_scale, 1.0)
 
+    def test_pointer_zoom_anchor_and_precision_scroll_accumulation(self):
+        self.show()
+        self.zoom(2.0)
+        canvas = self.editor.canvas
+        canvas.yview_moveto(.25)
+        x, y = 30, 75
+        before = canvas.canvasy(y) / self.editor._photo.height()
+        old = self.editor._photo
+        canvas.event_generate("<MouseWheel>", x=x, y=y, delta=120, state=4)
+        self.spin(lambda: self.editor._photo is not old)
+        self.assertAlmostEqual(canvas.canvasy(y), before * self.editor._photo.height(), delta=2)
+        with patch.object(canvas, "yview_scroll", wraps=canvas.yview_scroll) as scroll:
+            for _ in range(4):
+                canvas.event_generate("<MouseWheel>", x=x, y=y, delta=-10)
+            scroll.assert_called_once_with(1, "units")
+
     def test_control_wheel_zooms_without_plain_scroll_command(self):
         self.show()
         previous = self.editor._photo

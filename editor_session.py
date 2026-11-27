@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+import zlib
 
 from bookmarks_core import BookmarkError
 from toc_generation import Draft, DraftEntry, _mapping
@@ -283,7 +284,7 @@ class DraftStore:
 
 
 class UndoHistory:
-    """Bounded JSON states; no filesystem operations or shared mutable values."""
+    """Bounded, compressed JSON snapshots with one comparison string for the current state."""
 
     def __init__(self, limit=80):
         if type(limit) is not int or limit < 1:
@@ -303,7 +304,7 @@ class UndoHistory:
 
     def reset(self, state):
         text = _json_text(state, sort_keys=True)
-        self._states = [json.loads(text)]
+        self._states = [self._pack(text)]
         self._cursor = 0
         self._current_json = text
 
@@ -313,23 +314,28 @@ class UndoHistory:
         text = _json_text(state, sort_keys=True)
         if self._cursor >= 0 and text == self._current_json:
             return False
-        clean = json.loads(text)
-        self._states = self._states[:self._cursor + 1] + [clean]
+        self._states = self._states[:self._cursor + 1] + [self._pack(text)]
         self._states = self._states[-self.limit:]
         self._cursor = len(self._states) - 1
         self._current_json = text
         return True
 
+    @staticmethod
+    def _pack(text):
+        return zlib.compress(text.encode("utf-8", errors="surrogatepass"), level=1)
+
+    def _restore_cursor(self):
+        self._current_json = zlib.decompress(self._states[self._cursor]).decode("utf-8", errors="surrogatepass")
+        return json.loads(self._current_json)
+
     def undo(self):
         if not self.can_undo:
             return None
         self._cursor -= 1
-        self._current_json = _json_text(self._states[self._cursor], sort_keys=True)
-        return json.loads(self._current_json)
+        return self._restore_cursor()
 
     def redo(self):
         if not self.can_redo:
             return None
         self._cursor += 1
-        self._current_json = _json_text(self._states[self._cursor], sort_keys=True)
-        return json.loads(self._current_json)
+        return self._restore_cursor()

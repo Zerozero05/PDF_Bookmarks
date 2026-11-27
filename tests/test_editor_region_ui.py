@@ -170,6 +170,12 @@ class EditorRegionUITests(unittest.TestCase):
         def check_overlay(rect):
             items = self.editor.canvas.find_withtag("review_overlay")
             self.assertEqual(len(items), 1)
+            underlay = self.editor.canvas.find_withtag("source_underlay")
+            self.assertEqual(len(underlay), 1)
+            self.assertEqual(self.editor.canvas.coords(underlay[0]), self.editor.canvas.coords(items[0]))
+            self.assertEqual(self.editor.canvas.itemcget(items[0], "fill"), "")
+            self.assertGreater(float(self.editor.canvas.itemcget(underlay[0], "width")),
+                               float(self.editor.canvas.itemcget(items[0], "width")))
             coordinates = self.editor.canvas.coords(items[0])
             expected = [value * (self.editor._photo.width() if index % 2 == 0 else self.editor._photo.height())
                         for index, value in enumerate(rect)]

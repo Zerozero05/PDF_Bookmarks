@@ -126,7 +126,7 @@ class ColumnMemory:
     widths attached to the same data when a Treeview changes displaycolumns.
     """
 
-    def __init__(self, tree, widths=None):
+    def __init__(self, tree, widths=None, *, fit_title=False):
         self.tree = tree
         columns = ("#0", *tree.cget("columns"))
         self._default_widths = {name: tree.column(name, "width") for name in columns}
@@ -146,7 +146,24 @@ class ColumnMemory:
                 ("<Map>", self._queue_restore),
             )
         ]
+        if fit_title:
+            binding = tree.bind("<Configure>", self.fit_title, add="+")
+            self._bindings.append(("<Configure>", binding))
         self._queue_restore()
+
+    def fit_title(self, _event=None):
+        """Give numeric/status columns room when the user has not set column widths."""
+        tree = self.tree
+        if self._closed or self._widths or self._dragged or tree.winfo_width() <= 1:
+            return
+        title = "#0" if "tree" in map(str, tree.tk.splitlist(tree.cget("show"))) else "title"
+        displayed = tuple(map(str, tree.tk.splitlist(tree.cget("displaycolumns"))))
+        if displayed == ("#all",):
+            displayed = tree.cget("columns")
+        fixed = sum(tree.column(col, "width") for col in displayed if col != title)
+        width = max(tree.column(title, "minwidth"), tree.winfo_width() - fixed - 4)
+        if tree.column(title, "width") > width:
+            tree.column(title, width=width)
 
     def _press(self, event):
         self._dragged = None

@@ -85,6 +85,20 @@ class EditorAuxScrollTests(unittest.TestCase):
         self.assertGreaterEqual(top, 0, str(widget))
         self.assertLessEqual(top + widget.winfo_height(), self.editor._edit_scroll.winfo_height(), str(widget))
 
+    def test_last_status_column_fits_in_both_default_views_at_large_text(self):
+        self.root.geometry("1000x720+20000+20000")
+        apply_ui_scale(self.root, 125)
+        for view in ("目录树", "详细表格", "目录树"):
+            self.editor.view_mode.set(view)
+            self.editor._view_changed()
+            self.settle()
+            tree = self.editor.tree
+            tree.see("0")
+            self.root.update_idletasks()
+            x, _, width, _ = tree.bbox("0", "confirmed")
+            self.assertLessEqual(x + width, tree.winfo_width(), view)
+            self.assertEqual(self.editor._column_memory.snapshot(), {})
+
     def test_default_and_expanded_minimum_geometry_all_themes_and_text_scales(self):
         before = deepcopy(asdict(self.editor.draft))
         selection = self.editor.tree.selection()

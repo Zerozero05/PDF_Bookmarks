@@ -384,7 +384,7 @@ class EditorWorkflowTests(unittest.TestCase):
         self.choose(4)
         self.press_enter(self.editor.tree)
         self.assertTrue(self.editor.draft.entries[4].confirmed)
-        self.assertEqual(self.editor.tree.item("4", "values")[-1], "已确认")
+        self.assertEqual(self.editor.tree.item("4", "values")[-1], "✓ 已确认")
         self.assertEqual(self.editor.tree.selection(), ("1",))
         self.assertEqual(self.editor._editing_index, 1)
         self.assertEqual(self.editor.preview_page.get(), "3")
@@ -444,11 +444,25 @@ class EditorWorkflowTests(unittest.TestCase):
         self.editor.filter_mode.set("待确认")
         self.editor._filter_changed()
         self.choose(1)
-        self.press_enter(self.editor.tree)
+        with patch.object(self.editor.tree, "insert", wraps=self.editor.tree.insert) as insert:
+            self.press_enter(self.editor.tree)
+            insert.assert_not_called()
         self.assertTrue(self.editor.draft.entries[1].confirmed)
         self.assertEqual(self.editor.tree.get_children(), ("2", "4"))
         self.assertEqual(self.editor.tree.selection(), ("2",))
         self.assertEqual(self.editor._editing_index, 2)
+
+    def test_enter_low_confidence_keeps_its_rating_and_row(self):
+        self.load()
+        self.editor.filter_mode.set("低可信")
+        self.editor.draft.entries[1].confidence = "低"
+        self.editor._filter_changed()
+        self.choose(1)
+        with patch.object(self.editor.tree, "insert", wraps=self.editor.tree.insert) as insert:
+            self.press_enter(self.editor.tree)
+            insert.assert_not_called()
+        self.assertEqual(self.editor.tree.set("1", "confidence"), "低")
+        self.assertEqual(self.editor.tree.set("1", "confirmed"), "✓ 已确认")
 
     def test_enter_tree_search_uses_original_indices_and_skips_context_parents(self):
         self.load()

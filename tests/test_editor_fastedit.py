@@ -87,7 +87,7 @@ class FastEditorTests(unittest.TestCase):
         self.editor.update_entry()
         self.root.update()
         self.assertTrue(self.editor.draft.entries[0].confirmed)
-        self.assertEqual(self.editor.tree.set("0", "confirmed"), "已确认")
+        self.assertEqual(self.editor.tree.set("0", "confirmed"), "✓ 已确认")
 
     def test_checkbox_command_commits_confirmation_immediately(self):
         checkbox = next(control for control in self.editor._controls
@@ -95,7 +95,7 @@ class FastEditorTests(unittest.TestCase):
                         and control.cget("text") == "已核对目标页")
         checkbox.invoke()
         self.assertTrue(self.editor.draft.entries[0].confirmed)
-        self.assertEqual(self.editor.tree.set("0", "confirmed"), "已确认")
+        self.assertEqual(self.editor.tree.set("0", "confirmed"), "✓ 已确认")
         self.root.update()
         self.assertTrue(self.editor.draft.entries[0].confirmed)
 

@@ -56,7 +56,10 @@ class CommandHierarchyTests(unittest.TestCase):
                     self.assertEqual(self.rgb(self.style.lookup(style, "bordercolor", state)), self.rgb(palette["accent"]))
                 self.assertEqual(self.rgb(self.style.lookup(style, "background", ("active",))), self.rgb(palette["hover"]))
                 self.assertEqual(self.rgb(self.style.lookup(style, "foreground", ("disabled",))), self.rgb(palette["disabled"]))
-            self.assertEqual(self.rgb(self.style.lookup("Toolbar.TFrame", "background")), self.rgb(palette["background"]))
+            for surface in ("Toolbar.TFrame", "BarInset.TFrame", "BarHeading.TLabel", "BarDetail.TLabel"):
+                self.assertEqual(self.rgb(self.style.lookup(surface, "background")), self.rgb(palette["masthead"]))
+            self.assertTrue(any(element == "PdfToolbar.surface"
+                                for element, _ in self.style.layout("Toolbar.TFrame")))
             self.assertEqual(self.rgb(self.style.lookup("Section.TLabel", "foreground")), self.rgb(palette["foreground"]))
             self.assertEqual(self.rgb(self.style.lookup("Muted.TLabel", "foreground")), self.rgb(palette["muted"]))
 

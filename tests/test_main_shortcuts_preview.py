@@ -300,6 +300,21 @@ class MainShortcutsPreviewTests(unittest.TestCase):
                   and self.main._render_photo.height() == old_size[1])
         self.assertEqual(self.main.preview_zoom.get(), "100%")
 
+    def test_same_page_bookmark_keeps_photo_scroll_and_updates_heading(self):
+        self.render()
+        first = self.main.bookmark_tree.selection()[0]
+        second = self.main.bookmark_tree.insert("", "end", text="同页另一节")
+        self.main.bookmark_rows[second] = dict(self.main.bookmark_rows[first], title="同页另一节")
+        self.main.image_canvas.yview_moveto(.25)
+        photo, position = self.main._render_photo, self.main.image_canvas.yview()
+        with patch.object(self.main.executor, "submit", wraps=self.main.executor.submit) as submitted:
+            self.main.bookmark_tree.selection_set(second)
+            self.root.update()
+            self.assertIs(self.main._render_photo, photo)
+            self.assertEqual(self.main.image_canvas.yview(), position)
+            self.assertIn("同页另一节", self.main.preview_heading.get())
+            submitted.assert_not_called()
+
     def test_zoom_burst_is_coalesced_clamped_and_pending_render_blocks_update(self):
         self.render()
         canvas = self.main.image_canvas

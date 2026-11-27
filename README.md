@@ -2,27 +2,27 @@
 
 为普通 PDF 添加多级书签，可独立使用，也适配 Zotero 附件。支持导入目录 JSON，或从文字、扫描 PDF 识别目录，经预览与人工校对后写入，保持原 PDF 文件名和路径。
 
-当前稳定版为 **v1.13.0**，支持 **Windows 10/11 x64**。程序提供中文界面，支持中文文件名和书签。OCR 在本机运行，无需上传 PDF 或提供 API Key。
+本版本为 **v1.14.0**，支持 **Windows 10/11 x64**。程序提供中文界面，支持中文文件名和书签。OCR 在本机运行，无需上传 PDF 或提供 API Key。
 
-[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.13.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
+[下载 Windows 版](https://github.com/Zerozero05/PDF_Bookmarks/releases/tag/v1.14.0) · [完整使用说明](docs/USAGE.md) · [查看更新](#更新日志)
 
 ## 选择下载方式
 
 | 下载 | 运行方式与区别 |
 | --- | --- |
-| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
-| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
-| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
-| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
+| [单文件 GUI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/PDF_Bookmarks_v1.14.0_win_x64.exe) | 直接运行，便于携带；启动时会临时解包运行库 |
+| [便携文件夹版 ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/PDF_Bookmarks_v1.14.0_win_x64_portable.zip) | 完整解压后运行 `PDF_Bookmarks\PDF_Bookmarks.exe`；保留 `_internal`、`package-manifest.json` 和其余文件 |
+| [CLI EXE](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/PDF_Bookmarks_v1.14.0_win_x64_cli.exe) | 适合脚本与批量处理，参数见 [命令行说明](docs/USAGE.md#命令行) |
+| [完整 Windows ZIP](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/PDF_Bookmarks_v1.14.0_win_x64_full.zip) | 含 GUI、CLI、源码、测试、示例和说明；GUI 位于 `PDF_Bookmarks\dist\PDF_Bookmarks.exe` |
 
 两种 GUI 功能相同，无需安装 Python，共用 `%LOCALAPPDATA%\ZoteroPDFBookmarks\settings.json` 及本机草稿。便携版主要省去启动解包，不保证 OCR 或 PDF 写入更快；“便携”指免安装，设置与草稿仍保存在当前电脑。
 
-下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.13.0/PDF_Bookmarks_v1.13.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
+下载以 [Releases 实际附件](https://github.com/Zerozero05/PDF_Bookmarks/releases)为准，校验值见 [SHA256SUMS.txt](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/SHA256SUMS.txt)；便携 ZIP 另附[独立校验文件](https://github.com/Zerozero05/PDF_Bookmarks/releases/download/v1.14.0/PDF_Bookmarks_v1.14.0_win_x64_portable.zip.sha256)。`update-manifest.json` 供程序检查更新，无需手动运行。
 
 ## 快速使用
 
 1. 下载并运行单文件 GUI，或完整解压便携版；找到 PDF 原文件，关闭占用它的阅读窗口。
-2. 拖入 PDF 和对应的 `书名.toc.json`。没有 JSON 时，切换“目录工作台 · 生成与编辑”，选择目录页范围、栏数和节编号，点“自动识别目录”，逐项校对后保存。v1.13.0 将“目录栏数”和“标题编号”固定在目录表上方右侧，专注模式也可直接选择。
+2. 拖入 PDF 和对应的 `书名.toc.json`。没有 JSON 时，切换“目录工作台 · 生成与编辑”，选择目录页范围、栏数和节编号，点“自动识别目录”，逐项校对后保存。自 v1.13.0 起，“目录栏数”和“标题编号”固定在目录表上方右侧，专注模式也可直接选择。
 3. 点“1. 预览”，检查层级、标题与实际目标页；勾选要处理的 PDF，设置写入选项。
 4. 点“2. 写入勾选的 PDF”。更改输入或写入选项后须重新预览；完成后重新打开原文件检查书签。
 
@@ -63,6 +63,9 @@
 
 | 版本／记录 | 日期 | 主要变更 |
 | --- | --- | --- |
+| v1.14.0 | 2026-11-28 | 1、三主题配色和多选标记。<br>2、长目录筛选确认、压缩撤销历史和同页预览。<br>3、两页指针缩放、原行定位与实际写入本数。<br>[本次完整记录](CHANGELOG.md#v1-14-0) |
+| 三主题配色（本地试用） | 2026-11-28 | 1、两页共用纸白日间、石墨夜间和灰绿护眼配色。<br>2、多选时每个选中行都有左侧细线，写入勾号单独显示。<br>3、夜间主按钮使用深墨色文字，草稿暂存失败时就地显示原因。<br>[本次完整记录](CHANGELOG.md#paper-teal) |
+| 连续校对与原页浏览（本地试用） | 2026-11-27 | 1、同页书签保留原页位置，两页均可围绕指针缩放。<br>2、筛选中原地确认，原行用双线定位，80 个撤销状态压缩驻留。<br>3、三主题工具栏统一，写入按钮显示实际本数。<br>[本次完整记录](CHANGELOG.md#review-viewport-2026-11-27) |
 | v1.13.0 | 2026-11-24 | 1、写入页依次选择文件、书签和原页，底部核对勾选。<br>2、目录表上方常显栏数、标题编号，校对区集中进度、筛选、问题和草稿，可回到所选目标页。<br>3、三主题加强文字与选中行对比，一级目录加粗，可用 Esc 清除筛选。<br>4、工作页选中标记、翻页和缩放分组，校对进度跟随 Windows 动画设置。<br>5、减少切页重绘，按需加载 PDF 引擎，释放已显示预览的压缩图片副本。<br>[本次完整记录](CHANGELOG.md#v1-13-0) |
 | v1.12.0 | 2026-10-24 | 1、均衡布局、三档界面字号、连续校对及F1检索。<br>2、目录问题、映射影响、来源对照与所选标题批处理。<br>3、列表筛选/单本详情、局部OCR差异与保护、缓存和响应优化。<br>4、兼容原数据/编号/安全写入；两轮云端门禁、真实升级回滚及七附件公开核验通过。<br>[本次完整记录](CHANGELOG.md#v1-12-0) |
 | 均衡清爽与校对辅助（本地开发） | 2026-10-23 | 1、三主题、三档字号与F1检索，小窗辅助区按需滚动，保留简洁菜单及原快捷键。<br>2、保持目录浏览状态，新增问题清单、字段反馈及映射影响预览。<br>3、原目录行对照、选中标题批量预览与一次撤销。<br>4、主列表书名/状态筛选及单本详情，隐藏勾选仍参与写入确认。<br>5、2026-10-24修复手工标题遮蔽真实OCR候选，r3实屏验证默认保护、明确采纳及一次撤销还原。<br>6、会话共享64 MiB缓存预算与诊断，80步撤销保持；本地四构建核验通过，正式下载仍为 v1.11.0。<br>[本次完整记录](CHANGELOG.md#balanced-review-2026-10-23) |

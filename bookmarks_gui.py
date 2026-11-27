@@ -12,9 +12,11 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 
 from bookmarks_core import discover_pairs, inspect_pdf, write_plan
-from gui_support import (delete_written_toc, dropped_pairs, load_settings, preview_photo, render_page,
-                         save_settings, settings_path, toc_file_signature)
-from ui_theme import add_tooltip, apply_app_icon, apply_theme, apply_ui_scale, refresh_theme_widgets, workspace_header
+from gui_support import (PreviewWheel, delete_written_toc, dropped_pairs, load_settings, preview_anchor,
+                         preview_photo, render_page, restore_preview_anchor, save_settings, settings_path,
+                         toc_file_signature)
+from ui_theme import (DetailTransition, add_tooltip, animate_workspace_marker, apply_app_icon,
+                      apply_theme, apply_ui_scale, refresh_theme_widgets, workspace_header)
 from help_dialog import show_help
 from ui_layout import ColumnMemory, PaneMemory
 from window_controls import TitlebarPin
@@ -39,7 +41,7 @@ class BookmarkWindow:
         apply_app_icon(root)
         root.title("PDF_Bookmarks · PDF 书签目录")
         root.geometry(settings["geometry"])
-        root.minsize(1000, 760)
+        root.minsize(1000, 720)
         self.events = queue.Queue()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf-bookmarks")
         self.busy = self.closed = False
@@ -55,6 +57,7 @@ class BookmarkWindow:
         self.pending_editor_saves = []
         self.inputs, self.plans, self.drop_paths = [], [], []
         self.items, self.toc_overrides, self.bookmark_rows = {}, {}, {}
+        self._bookmark_list_item = None
         self.file_search = tk.StringVar(master=root)
         self.file_filter = tk.StringVar(master=root, value="全部")
         self.file_filter_status = tk.StringVar(master=root, value="显示 0 / 共 0 本")
@@ -67,6 +70,8 @@ class BookmarkWindow:
         self._preview_scale = 1.0
         self._preview_target = None
         self._preview_position = None
+        self._preview_key = None
+        self._wheel = PreviewWheel()
         self.updates = None
         self._render_photo = self._displayed_page = None
         self._updating = False
@@ -103,7 +108,8 @@ class BookmarkWindow:
             "main_pane_ratio": PaneMemory(self.main_body, ratio=settings["main_pane_ratio"]),
             "main_preview_ratio": PaneMemory(self.preview_body, ratio=settings["main_preview_ratio"]),
             "file_column_widths": ColumnMemory(self.file_tree, widths=settings["file_column_widths"]),
-            "bookmark_column_widths": ColumnMemory(self.bookmark_tree, widths=settings["bookmark_column_widths"]),
+            "bookmark_column_widths": ColumnMemory(self.bookmark_tree, widths=settings["bookmark_column_widths"],
+                                                   fit_title=True),
         }
         self._apply_focus_mode()
         self.titlebar_pin = TitlebarPin(root, self.topmost)
@@ -133,6 +139,7 @@ class BookmarkWindow:
         self.workspace_tabs.add(self.main_page, text="主界面 · 预览与写入")
         self.workspace_tabs.add(self.editor_page, text="目录工作台 · 生成与编辑")
         self._active_workspace = str(self.main_page)
+        self._tab_transition = DetailTransition(self.workspace_tabs)
         self.workspace_tabs.bind("<<NotebookTabChanged>>", self._workspace_changed)
         header = workspace_header(self.main_page, "书签写入")
         self.current_book_label = ttk.Label(header, text=self.current_book.get(),
@@ -206,7 +213,7 @@ class BookmarkWindow:
         ttk.Label(options, text="备份目录留空时使用各 PDF 旁的 _backup；没有目录 JSON 时，可切换目录工作台生成并校对。",
                   wraplength=800).grid(row=3, column=0, columnspan=5, sticky="w", pady=(3, 0))
 
-        actions = self._write_actions = ttk.Frame(footer, padding=(8, 5), style="Paper.TFrame")
+        actions = self._write_actions = ttk.Frame(footer, padding=(8, 5), style="Toolbar.TFrame")
         actions.pack(fill="x")
         actions.columnconfigure(1, weight=1)
         self.write_options_button = ttk.Button(actions, text="写入设置 ▸", command=self._toggle_write_options,
@@ -214,10 +221,10 @@ class BookmarkWindow:
         self.write_options_button.grid(row=0, column=0, padx=(0, 10))
         add_tooltip(self.write_options_button, "展开已有书签策略、备份和清理选项；收起不改变当前设置。")
         ttk.Label(actions, textvariable=self.status, width=1, wraplength=410, justify="left",
-                  style="PaperDetail.TLabel").grid(row=0, column=1, sticky="ew")
-        ttk.Label(actions, textvariable=self.selection_status, style="PaperDetail.TLabel").grid(
+                  style="BarDetail.TLabel").grid(row=0, column=1, sticky="ew")
+        ttk.Label(actions, textvariable=self.selection_status, style="BarDetail.TLabel").grid(
             row=0, column=2, padx=10)
-        self.write_button = ttk.Button(actions, text="2. 写入勾选的 PDF", command=self._write,
+        self.write_button = ttk.Button(actions, text="写入已勾选的 0 本", command=self._write, width=18,
                                         style="Secondary.TButton", state="disabled")
         self.write_button.grid(row=0, column=3)
 
@@ -284,10 +291,10 @@ class BookmarkWindow:
         ttk.Label(bookmarks, text="书签目录", style="PaperHeading.TLabel").pack(anchor="w", pady=(0, 5))
         self.bookmark_tree = ttk.Treeview(bookmarks, columns=("printed", "pdf"), show="tree headings", selectmode="browse")
         self.bookmark_tree.heading("#0", text="书签", anchor="w")
-        self.bookmark_tree.column("#0", width=190, minwidth=130)
+        self.bookmark_tree.column("#0", width=127, minwidth=96)
         for column, label in (("printed", "印刷页"), ("pdf", "PDF 页")):
             self.bookmark_tree.heading(column, text=label, anchor="e")
-            self.bookmark_tree.column(column, width=65, minwidth=55, stretch=False, anchor="e")
+            self.bookmark_tree.column(column, width=64, minwidth=60, stretch=False, anchor="e")
         self._scrollers(bookmarks, self.bookmark_tree)
         self.empty_bookmarks = ttk.Label(bookmarks, text="预览后选中一本 PDF 查看书签",
                                          justify="center", wraplength=200, style="Hint.TLabel")
@@ -298,7 +305,7 @@ class BookmarkWindow:
                                     anchor="w", style="PaperHeading.TLabel")
         preview_heading.pack(fill="x", pady=(0, 5))
         self._preview_heading_tip = add_tooltip(preview_heading, "选择书签查看对应原页。")
-        page_tools = ttk.Frame(page, style="Paper.TFrame")
+        page_tools = ttk.Frame(page, padding=(6, 3), style="Toolbar.TFrame")
         page_tools.pack(side="bottom", fill="x", pady=(4, 0))
         zoom_group = ttk.Frame(page_tools, style="Zoom.TFrame", padding=2)
         zoom_group.pack(side="left")
@@ -737,7 +744,7 @@ class BookmarkWindow:
             if self.editor is not None and not self.editor.closed:
                 self.editor._persist_settings()
         self._active_workspace = selected
-        self.root.update_idletasks()
+        animate_workspace_marker(self.workspace_tabs, self._tab_transition)
 
     def _editor_closed(self):
         self.workspace_tabs.select(self.main_page)
@@ -811,6 +818,7 @@ class BookmarkWindow:
                 pdf, toc = item["pdf_path"], item["toc_path"]
         self._render_token += 1
         self._cancel_preview_render()
+        self._preview_key = None
         self.editor = open_editor(self.root, self.executor, pdf_path=pdf or None,
                                   toc_path=None if generate else toc or None, on_saved=self._editor_saved,
                                   editor_settings=self.editor_settings, on_settings_changed=self._editor_settings_changed,
@@ -1133,8 +1141,11 @@ class BookmarkWindow:
         hidden = sum(item["checked"] for iid, item in self.items.items() if iid not in visible)
         self.selection_status.set(f"选中 {selected} 本 · 勾选写入 {checked} 本" +
                                   (f"（筛选隐藏 {hidden} 本）" if hidden else ""))
-        ready = bool(self._checked_items()) and not self.busy
+        writable = len(self._checked_items())
+        ready = writable > 0 and not self.busy
+        label = "勾选项须先预览" if checked and not writable else f"写入已勾选的 {writable} 本"
         self.write_button.configure(state="normal" if ready else "disabled",
+                                    text=label, width=18,
                                     style="Accent.TButton" if ready else "Secondary.TButton")
         self.preview_button.configure(style="Secondary.TButton" if ready else "Accent.TButton")
         self._refresh_empty_states()
@@ -1227,9 +1238,12 @@ class BookmarkWindow:
         self.events.put(("preview_done", errors))
 
     def _clear_bookmarks(self):
+        self._bookmark_list_item = None
         self._render_token += 1
         self._cancel_preview_render()
         self._preview_target = self._preview_position = None
+        self._preview_key = None
+        self._wheel.remainder = 0
         self.preview_heading.set("原页预览")
         self._preview_heading_tip.text = "选择书签查看对应原页。"
         self.bookmark_tree.delete(*self.bookmark_tree.get_children())
@@ -1277,7 +1291,12 @@ class BookmarkWindow:
         self._current_file_tip.text = self.file_detail.get()
         self._current_book_tip.text = self.file_detail.get()
         self._fit_current_book()
+        if self._bookmark_list_item is not None:
+            previous_iid, previous_plan = self._bookmark_list_item
+            if iid == previous_iid and item["plan"] is previous_plan:
+                return
         self._clear_bookmarks()
+        self._bookmark_list_item = (iid, item["plan"])
         if item["plan"] is None:
             return
         parents = {}
@@ -1295,12 +1314,17 @@ class BookmarkWindow:
         if self.busy or not selection or selection[0] not in self.bookmark_rows:
             return
         bookmark = self.bookmark_rows[selection[0]]
-        self._cancel_preview_render()
-        self.image_canvas.delete("all")
-        self._render_photo = self._displayed_page = None
-        self._preview_target = bookmark["pdf_path"], bookmark["pdf_page"]
+        target = bookmark["pdf_path"], bookmark["pdf_page"]
         self.preview_heading.set(f"原页预览 · {bookmark['title']}")
         self._preview_heading_tip.text = f"{bookmark['title']}\nPDF 第 {bookmark['pdf_page']} 页"
+        if target == self._preview_target and self._preview_key is not None:
+            key = self._preview_request_key(target[0])
+            if key == self._preview_key or (self._render_after is not None and key and key[0] == self._preview_key[0]):
+                return
+        self.image_canvas.delete("all")
+        self._render_photo = self._displayed_page = None
+        self._preview_target = target
+        self._wheel.remainder = 0
         self._refresh_empty_states()
         self._preview_position = None
         self.image_canvas.xview_moveto(0)
@@ -1313,6 +1337,13 @@ class BookmarkWindow:
             self._render_after = None
         if self._render_future is not None:
             self._render_future.cancel()
+
+    def _preview_request_key(self, pdf):
+        try:
+            identity = pdf_identity(pdf)
+        except OSError:
+            return None
+        return identity, max(300, min(800, self.image_canvas.winfo_width() - 16)), self._preview_scale
 
     def _schedule_preview_render(self, delay=0):
         self._render_token += 1
@@ -1327,12 +1358,13 @@ class BookmarkWindow:
         if self.closed or self.busy or self._preview_target is None:
             return
         pdf, page = self._preview_target
+        self._preview_key = self._preview_request_key(pdf)
         self.page_status.set(f"PDF 第 {page} 页 · 正在生成只读预览…")
-        width = max(300, min(800, self.image_canvas.winfo_width() - 16))
+        width = self._preview_key[1] if self._preview_key else max(300, min(800, self.image_canvas.winfo_width() - 16))
         self._render_future = self.executor.submit(
             self._render_worker, self._render_token, pdf, page, width, self._preview_scale)
 
-    def _zoom_preview(self, factor=1.0, reset=False):
+    def _zoom_preview(self, factor=1.0, reset=False, *, point=None):
         if self.closed or self.busy or self._preview_target is None:
             return "break"
         scale = 1.0 if reset else max(.5, min(3.0, self._preview_scale * factor))
@@ -1340,22 +1372,14 @@ class BookmarkWindow:
             return "break"
         self._preview_scale = scale
         self.preview_zoom.set(f"{scale:.0%}")
-        self._preview_position = (self.image_canvas.xview()[0], self.image_canvas.yview()[0])
+        self._preview_position = preview_anchor(self.image_canvas, self._render_photo, point, origin=8)
         self._schedule_preview_render(delay=80)
         return "break"
 
     def _preview_wheel(self, event):
         if self.closed or self.busy:
             return "break"
-        number = getattr(event, "num", None)
-        delta = 120 if number == 4 else -120 if number == 5 else getattr(event, "delta", 0)
-        if not delta:
-            return "break"
-        direction = 1 if delta > 0 else -1
-        if event.state & 4:
-            return self._zoom_preview(1.2 ** direction)
-        self.image_canvas.yview_scroll(-direction * max(1, abs(delta) // 120) * 3, "units")
-        return "break"
+        return self._wheel.handle(event, self.image_canvas, self._zoom_preview)
 
     def _render_worker(self, token, pdf, page, width, scale=1.0):
         if token != self._render_token or self.closed:
@@ -1419,6 +1443,7 @@ class BookmarkWindow:
             return
         self._render_token += 1
         self._cancel_preview_render()
+        self._preview_key = None
         self._set_busy(True)
         self.status.set("正在校验并原地写入勾选的 PDF…")
         self.executor.submit(self._write_worker, plans, existing, options, delete_toc, signatures)
@@ -1510,6 +1535,7 @@ class BookmarkWindow:
                     if token != self._render_token:
                         continue
                     if error:
+                        self._preview_key = None
                         self.page_status.set(f"无法显示目标页：{error}")
                         self._page_status_tip.text = f"{pdf}\n{self.page_status.get()}"
                         self._append(f"页面预览失败 {pdf}：{error}")
@@ -1519,8 +1545,7 @@ class BookmarkWindow:
                         self.image_canvas.create_image(8, 8, image=self._render_photo, anchor="nw")
                         self.image_canvas.configure(scrollregion=self.image_canvas.bbox("all"))
                         if self._preview_position is not None:
-                            self.image_canvas.xview_moveto(self._preview_position[0])
-                            self.image_canvas.yview_moveto(self._preview_position[1])
+                            restore_preview_anchor(self.image_canvas, self._render_photo, self._preview_position)
                             self._preview_position = None
                         self._displayed_page = page
                         self.page_status.set(f"PDF 第 {page} 页（只读）")

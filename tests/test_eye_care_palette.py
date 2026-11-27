@@ -38,9 +38,11 @@ class EyeCarePaletteTests(unittest.TestCase):
             for background in ("background", "surface", "input_background"):
                 with self.subTest(foreground=foreground, background=background):
                     self.assertGreaterEqual(contrast(palette[foreground], palette[background]), 4.5)
-        for background in ("selected_background", "accent", "accent_active"):
-            with self.subTest(background=background):
-                self.assertGreaterEqual(contrast(palette["selected_foreground"], palette[background]), 4.5)
+        for foreground, background in (("selected_foreground", "selected_background"),
+                                       ("action_foreground", "action"), ("action_foreground", "accent_active"),
+                                       ("checkmark", "action"), ("checkmark", "accent")):
+            with self.subTest(foreground=foreground, background=background):
+                self.assertGreaterEqual(contrast(palette[foreground], palette[background]), 4.5)
 
 
 if __name__ == "__main__":

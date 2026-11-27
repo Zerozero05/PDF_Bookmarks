@@ -20,6 +20,44 @@ from config_manager import (DEFAULT_CONFIG, load_config, sanitize_settings,
 SETTINGS_DEFAULTS = DEFAULT_CONFIG
 
 
+class PreviewWheel:
+    """Keep fractional wheel movement local to one PDF canvas."""
+
+    def __init__(self):
+        self.remainder = 0
+
+    def handle(self, event, canvas, zoom):
+        number = getattr(event, "num", None)
+        delta = 120 if number == 4 else -120 if number == 5 else getattr(event, "delta", 0)
+        if delta and event.state & 4:
+            point = (event.x, event.y) if hasattr(event, "x") and hasattr(event, "y") else None
+            zoom(1.2 ** max(-3, min(3, delta / 120)), point=point)
+        elif delta:
+            # One Windows detent is three Tk units. Precision wheels may
+            # deliver the same distance in many small, signed increments.
+            self.remainder += delta * 3
+            units = int(self.remainder / 120)
+            if units:
+                canvas.yview_scroll(-units, "units")
+                self.remainder -= units * 120
+        return "break"
+
+
+def preview_anchor(canvas, photo, point=None, origin=0):
+    if photo is None:
+        return None
+    x, y = point if point is not None else (canvas.winfo_width() / 2, canvas.winfo_height() / 2)
+    u = (canvas.canvasx(x) - origin) / photo.width()
+    v = (canvas.canvasy(y) - origin) / photo.height()
+    return max(0, min(1, u)), max(0, min(1, v)), x, y
+
+
+def restore_preview_anchor(canvas, photo, anchor):
+    u, v, x, y = anchor
+    canvas.xview_moveto(u - x / photo.width())
+    canvas.yview_moveto(v - y / photo.height())
+
+
 def _settings_path(path=None) -> Path:
     return settings_path(path)
 

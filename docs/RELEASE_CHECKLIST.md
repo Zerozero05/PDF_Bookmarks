@@ -14,7 +14,7 @@
 - [ ] 正式标签恰为 `v<VERSION>`，用户已确认本地/Actions 试用结果后才推送。
 - [ ] 已有同名 Release 不覆盖，不移动历史标签，不删除 v1.4.1 或其他历史资产。
 - [ ] 合成新版 `--test-version` 构建与正式产物隔离，不进入正式发布包。
-- [ ] 发行标题仅为 `v1.11.0`；七附件分别为 `PDF_Bookmarks_v1.11.0_win_x64.exe`、`PDF_Bookmarks_v1.11.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.11.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.11.0_win_x64_full.zip`、`PDF_Bookmarks_v1.11.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`，不加入新前缀或改用连字符。
+- [ ] 发行标题仅为 `v1.14.0`；七附件分别为 `PDF_Bookmarks_v1.14.0_win_x64.exe`、`PDF_Bookmarks_v1.14.0_win_x64_cli.exe`、`PDF_Bookmarks_v1.14.0_win_x64_portable.zip`、`PDF_Bookmarks_v1.14.0_win_x64_full.zip`、`PDF_Bookmarks_v1.14.0_win_x64_portable.zip.sha256`、`SHA256SUMS.txt`、`update-manifest.json`，不加入新前缀或改用连字符。
 
 ## B. 配置兼容
 

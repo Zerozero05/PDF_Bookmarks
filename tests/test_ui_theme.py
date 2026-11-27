@@ -51,6 +51,9 @@ class ThemeTests(unittest.TestCase):
                 self.assertEqual(self.rgb(style.lookup("TCombobox", "fieldbackground", ("readonly",))), self.rgb(p["input_background"]))
                 self.assertEqual(self.rgb(style.lookup("Review.Treeview", "foreground", ("selected",))), self.rgb(p["selected_foreground"]))
                 self.assertEqual(self.rgb(style.lookup("Accent.TButton", "background")), self.rgb(p["action"]))
+                for state in ((), ("active",), ("focus",), ("pressed",)):
+                    self.assertEqual(self.rgb(style.lookup("Accent.TButton", "foreground", state)),
+                                     self.rgb(p["action_foreground"]))
                 self.assertEqual(self.rgb(style.lookup("TEntry", "bordercolor", ("focus",))), self.rgb(p["accent"]))
                 self.assertEqual(self.rgb(style.lookup("Accent.TButton", "foreground", ("disabled",))), self.rgb(p["disabled"]))
                 self.assertGreaterEqual(int(style.lookup("Review.Treeview", "rowheight")), 20)
@@ -158,10 +161,11 @@ class ThemeTests(unittest.TestCase):
                     return checked.get(round(x * (size - 1)), round(y * (size - 1)))
 
                 # The rising long stroke and lower short stroke form a tick;
-                # a cross would also have a white upper-left diagonal.
+                # a cross would also mark the upper-left diagonal.
+                ink = tuple(v // 257 for v in self.rgb(p["checkmark"]))
                 self.assertEqual(pixel(.25, .30), tuple(v // 257 for v in self.rgb(p["action"])))
-                self.assertEqual(pixel(.30, .54), (255, 255, 255))
-                self.assertEqual(pixel(.70, .40), (255, 255, 255))
+                self.assertEqual(pixel(.30, .54), ink)
+                self.assertEqual(pixel(.70, .40), ink)
                 self.assertEqual(images["unselected"].get(size // 2, size // 2),
                                  tuple(v // 257 for v in self.rgb(p["input_background"])))
                 self.assertNotEqual(images["disabled_selected"].get(size // 2, size // 2),
@@ -180,8 +184,9 @@ class ThemeTests(unittest.TestCase):
                         return checked.get(round(x * (size - 1)), round(y * (size - 1)))
 
                     self.assertEqual(pixel(.25, .30), tuple(v // 257 for v in self.rgb(palette["action"])))
-                    self.assertEqual(pixel(.30, .54), (255, 255, 255))
-                    self.assertEqual(pixel(.70, .40), (255, 255, 255))
+                    ink = tuple(v // 257 for v in self.rgb(palette["checkmark"]))
+                    self.assertEqual(pixel(.30, .54), ink)
+                    self.assertEqual(pixel(.70, .40), ink)
                     self.assertEqual(images["unselected"].get(size // 2, size // 2),
                                      tuple(v // 257 for v in self.rgb(palette["input_background"])))
 

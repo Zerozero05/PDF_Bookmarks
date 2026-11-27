@@ -84,9 +84,15 @@ class VisualConsistencyTests(unittest.TestCase):
                                    ("context", "chapter"), ("pending", "chapter"),
                                    ("error", "background"), ("success", "background"),
                                    ("selected_foreground", "selected_background"),
-                                   ("selected_foreground", "action"), ("selected_foreground", "accent_active")):
+                                   ("action_foreground", "action"), ("action_foreground", "accent_active"),
+                                   ("checkmark", "action")):
                         self.assertGreaterEqual(self.contrast(p[fg], p[bg]), 7, (fg, bg))
+                    for bg in ("surface", "chapter", "selected_background"):
+                        self.assertGreaterEqual(self.contrast(p["accent"], p[bg]), 3, bg)
                     self.assertGreaterEqual(self.contrast(p["disabled"], p["background"]), 4.5)
+                    for state, role in (((), "pending"), (("selected",), "foreground"),
+                                        (("disabled",), "disabled")):
+                        self.assertEqual(self.style.lookup("Review.TCheckbutton", "foreground", state), p[role])
                     self.assertEqual(self.rgb(tree.tag_configure("outline_heading", "background")), self.rgb(p["chapter"]))
                     for state in (("selected", "focus"), ("selected", "!focus")):
                         self.assertEqual(self.rgb(self.style.lookup("Review.Treeview", "background", state)),
@@ -115,7 +121,11 @@ class VisualConsistencyTests(unittest.TestCase):
                         ("Review.Horizontal.TProgressbar", {"PdfReview.pbar", "PdfReview.trough"})):
                     self.assertTrue(required.issubset(names(self.style.layout(style))), style)
                 self.assertNotIn("PdfSelect.downarrow", names(self.style.layout("Document.TButton")))
+                for style in ("Treeview.Row", "Review.Treeview.Row"):
+                    self.assertIn("PdfSelection.line", names(self.style.layout(style)))
                 images = self.root._pdf_control_images["pdf_" + name]
+                self.assertEqual((images["row_idle"].width(), images["row_idle"].height()), (0, 0))
+                self.assertEqual(images["row_mark"].get(1, 1), tuple(v // 257 for v in self.rgb(p["accent"])))
                 self.assertTrue(images["empty_line"].transparency_get(0, 0))
                 self.assertFalse(images["underline"].transparency_get(0, 0))
                 self.assertTrue(images["arrow"].transparency_get(8, 1))

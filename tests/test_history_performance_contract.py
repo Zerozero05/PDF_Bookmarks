@@ -41,10 +41,14 @@ class HistoryPerformanceContractTests(unittest.TestCase):
             self.assertTrue(history.record(state))
         state["entries"][0]["title"] = "caller changed"
         self.assertEqual(len(history._states), 80)
-        self.assertEqual(history._states[0]["step"], 20)
-        current = history.undo()
-        current["entries"][0]["title"] = "returned changed"
-        self.assertEqual(history.redo()["entries"][0]["title"], "before")
+        for expected in range(98, 19, -1):
+            restored = history.undo()
+            self.assertEqual(restored, {"entries": [{"title": "before"}], "step": expected})
+            restored["entries"][0]["title"] = "returned changed"
+        self.assertIsNone(history.undo())
+        for expected in range(21, 100):
+            self.assertEqual(history.redo(), {"entries": [{"title": "before"}], "step": expected})
+        self.assertIsNone(history.redo())
 
     def test_invalid_json_cannot_discard_redo_branch_or_move_cursor(self):
         history = session.UndoHistory()

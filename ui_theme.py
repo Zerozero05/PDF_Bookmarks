@@ -16,37 +16,34 @@ import zlib
 
 PALETTES = {
     "light": {
-        "background": "#f2f2ee", "surface": "#fffefa", "foreground": "#232723",
-        "muted": "#364038", "border": "#c9ccc4", "edge": "#778076", "input_background": "#fffffc",
-        "heading": "#e9eae4", "hover": "#e3e8eb", "disabled": "#59615b", "accent": "#3c576a",
-        "action": "#354f62", "accent_active": "#293f50", "selected_background": "#344d60",
-        "selected_foreground": "#ffffff", "pending": "#694207", "context": "#485248",
-        "error": "#852f27", "success": "#285133",
-        "masthead": "#fafbf6", "masthead_text": "#29363b", "masthead_hint": "#414d50",
-        "paper_surround": "#d6d9d2",
-        "chapter": "#eff1eb",
+        "background": "#f3f1eb", "surface": "#fffefb", "foreground": "#223335",
+        "muted": "#3b4544", "border": "#d0d4cf", "edge": "#757f79", "input_background": "#fffffc",
+        "heading": "#e6eaeb", "hover": "#e7eeea", "disabled": "#58625d", "accent": "#38746d",
+        "action": "#204f50", "action_foreground": "#ffffff", "accent_active": "#193f41",
+        "checkmark": "#f4fffb", "selected_background": "#daeae7", "selected_foreground": "#203536",
+        "pending": "#69430e", "context": "#43504d", "error": "#76384e", "success": "#31503b",
+        "masthead": "#f7f7f4", "masthead_text": "#223335", "masthead_hint": "#3b4544",
+        "paper_surround": "#daddd7", "chapter": "#f1f1eb",
     },
     "dark": {
-        "background": "#202223", "surface": "#2a2c2d", "foreground": "#f0f1ed",
-        "muted": "#cdd0ca", "border": "#515654", "edge": "#8e9891", "input_background": "#242728",
-        "heading": "#353936", "hover": "#3c4540", "disabled": "#a8ada6", "accent": "#a6c4b6",
-        "action": "#365b4d", "accent_active": "#325748", "selected_background": "#365747",
-        "selected_foreground": "#ffffff", "pending": "#efd19a", "context": "#cdd3c9",
-        "error": "#ffb6ad", "success": "#b4d7bb",
-        "masthead": "#292c2b", "masthead_text": "#f1f3ec", "masthead_hint": "#c8cec6",
-        "paper_surround": "#1c1f1e",
-        "chapter": "#323633",
+        "background": "#202529", "surface": "#2b3236", "foreground": "#edf1ee",
+        "muted": "#c2c9cd", "border": "#465255", "edge": "#849294", "input_background": "#272d31",
+        "heading": "#343d43", "hover": "#364044", "disabled": "#a8b1b1", "accent": "#98cfc5",
+        "action": "#91cbc2", "action_foreground": "#162927", "accent_active": "#abdcd4",
+        "checkmark": "#152d29", "selected_background": "#304e51", "selected_foreground": "#edf1ee",
+        "pending": "#ebcb94", "context": "#cbd2cf", "error": "#eeadbf", "success": "#b6d7b5",
+        "masthead": "#282f32", "masthead_text": "#edf1ee", "masthead_hint": "#c5cccd",
+        "paper_surround": "#292d2f", "chapter": "#30383a",
     },
     "eye_care": {
-        "background": "#cbd0c3", "surface": "#e1e5d9", "foreground": "#252c24",
-        "muted": "#2d382b", "border": "#acb3a3", "edge": "#66725f", "input_background": "#ebeee4",
-        "heading": "#d1d7c7", "hover": "#ccd5c5", "disabled": "#4e584b", "accent": "#3c5843",
-        "action": "#384f3c", "accent_active": "#2b4532", "selected_background": "#394d3b",
-        "selected_foreground": "#ffffff", "pending": "#593a0f", "context": "#394636",
-        "error": "#68211d", "success": "#234230",
-        "masthead": "#dce1d4", "masthead_text": "#263529", "masthead_hint": "#384b39",
-        "paper_surround": "#c1c9b8",
-        "chapter": "#d7decc",
+        "background": "#c9ccbe", "surface": "#e0e3d8", "foreground": "#253331",
+        "muted": "#29372f", "border": "#acb5a7", "edge": "#657166", "input_background": "#ebede4",
+        "heading": "#d3d8cf", "hover": "#d6decf", "disabled": "#47554c", "accent": "#426961",
+        "action": "#345955", "action_foreground": "#ffffff", "accent_active": "#294a47",
+        "checkmark": "#f8fff7", "selected_background": "#bed3cb", "selected_foreground": "#1f3532",
+        "pending": "#573b13", "context": "#384337", "error": "#59243b", "success": "#1f3d26",
+        "masthead": "#d9ded3", "masthead_text": "#253331", "masthead_hint": "#303d36",
+        "paper_surround": "#c2c7bb", "chapter": "#d8dccd",
     },
 }
 
@@ -95,7 +92,11 @@ def _settings(palette, rowheight, scale=100):
             "selectbackground": p["selected_background"], "selectforeground": p["selected_foreground"],
         }},
         "TFrame": {"configure": {"background": p["background"]}},
-        "Toolbar.TFrame": {"configure": {"background": p["background"]}},
+        "Toolbar.TFrame": {"configure": {"background": p["masthead"]}},
+        "BarHeading.TLabel": {"configure": {"background": p["masthead"], "foreground": p["masthead_text"],
+                                             "font": "PdfOutlineTitle"}},
+        "BarDetail.TLabel": {"configure": {"background": p["masthead"], "foreground": p["masthead_hint"]}},
+        "BarInset.TFrame": {"configure": {"background": p["masthead"]}},
         "Masthead.TFrame": {"configure": {"background": p["masthead"]}},
         "Paper.TFrame": {"configure": {"background": p["surface"]}},
         "Zoom.TFrame": {"configure": {"background": p["surface"]}},
@@ -118,6 +119,8 @@ def _settings(palette, rowheight, scale=100):
         "Muted.TLabel": {"configure": {"foreground": p["muted"]}},
         "Hint.TLabel": {"configure": {"background": p["surface"], "foreground": p["muted"]}},
         "Error.TLabel": {"configure": {"foreground": p["error"]}},
+        "Review.TCheckbutton": {"map": {"foreground": [
+            ("disabled", p["disabled"]), ("selected", p["foreground"]), ("!selected", p["pending"])]}},
         "Success.TLabel": {"configure": {"foreground": p["success"]}},
         "TLabelframe": {"configure": {"background": p["background"], "bordercolor": p["border"],
                                        "borderwidth": 1, "relief": "solid"}},
@@ -148,12 +151,12 @@ def _settings(palette, rowheight, scale=100):
                         "map": {"background": button_background, "foreground": disabled,
                                 "bordercolor": control_border, "arrowcolor": disabled}},
         "Accent.TButton": {
-            "configure": {"background": p["action"], "foreground": "#ffffff",
-                          "bordercolor": p["action"], "focuscolor": "#ffffff"},
+            "configure": {"background": p["action"], "foreground": p["action_foreground"],
+                          "bordercolor": p["action"], "focuscolor": p["action_foreground"]},
             "map": {"background": [("disabled", p["background"]), ("pressed", p["accent_active"]),
                                    ("active", p["accent_active"])],
-                    "foreground": [("disabled", p["disabled"]), ("!disabled", "#ffffff")],
-                    "bordercolor": [("disabled", p["border"]), ("focus", p["accent"]),
+                    "foreground": [("disabled", p["disabled"]), ("!disabled", p["action_foreground"])],
+                    "bordercolor": [("disabled", p["border"]), ("focus", p["action_foreground"]),
                                     ("!disabled", p["action"])]},
         },
         "TEntry": {"configure": {"padding": (5, 2), "borderwidth": 1, "relief": "solid",
@@ -223,7 +226,7 @@ def _settings(palette, rowheight, scale=100):
     for name in ("TCheckbutton", "TRadiobutton"):
         settings[name] = {"configure": {"padding": (2, 2), "background": p["background"],
                                          "foreground": p["foreground"], "indicatorbackground": p["input_background"],
-                                         "indicatorforeground": p["selected_foreground"]},
+                                         "indicatorforeground": p["checkmark"]},
                           "map": {"foreground": disabled, "background": [("active", p["background"])],
                                   "indicatorbackground": [("selected", p["action"])]}}
     for orientation in ("Horizontal", "Vertical"):
@@ -258,7 +261,7 @@ def _checkbutton_images(root, palette, size, existing=None):
             fill = border if disabled else palette["action"]
         else:
             fill = palette["background"] if disabled else palette["input_background"]
-        mark = palette["background"] if disabled else palette["selected_foreground"]
+        mark = palette["background"] if disabled else palette["checkmark"]
         rows = []
         for y in range(size):
             row = []
@@ -344,11 +347,15 @@ def _control_elements(owner, theme_name, palette, settings):
     settings["Zoom.TFrame"]["layout"] = [("PdfZoom.group", {"sticky": "nsew"})]
     add_face("PdfQuiet.face", "background", "border", "hover", "chapter", "accent")
     add_face("PdfPrimary.face", "action", "action", "accent_active", "accent_active",
-             "selected_foreground", pressed_edge="accent_active")
+             "action_foreground", pressed_edge="accent_active")
     add_face("PdfDocument.face", "masthead", "border", "hover", "chapter", "accent")
     add_face("PdfInput.field", "input_background", "edge", "input_background", "input_background", "accent")
     add_face("PdfInvalid.field", "input_background", "error", "input_background", "input_background", "error",
              hover_edge="error")
+
+    elements["PdfToolbar.surface"] = {"element create": ("image", face("masthead", "border", radius=6),
+        {"border": 7, "padding": 0, "sticky": "nsew"})}
+    settings["Toolbar.TFrame"]["layout"] = [("PdfToolbar.surface", {"sticky": "nsew"})]
 
     def chevron(color, opened=False):
         icon = tk.PhotoImage(master=owner, width=17, height=8)
@@ -390,6 +397,14 @@ def _control_elements(owner, theme_name, palette, settings):
             image.put(color, to=(0, 0, width, height))
         images[name] = image
         return image
+
+    # An empty idle image lets Tk skip the native paint for every unselected row.
+    # The explicit element width keeps the rail stationary across focus changes.
+    elements["PdfSelection.line"] = {"element create": (
+        "image", strip("row_idle", None, 0, 0), ("selected", strip("row_mark", p["accent"], 64, 3)),
+        {"width": 3, "height": 1, "sticky": "nswe"})}
+    settings["Treeview.Row"] = {"layout": [("Treeitem.row", {"sticky": "nswe", "children": [
+        ("PdfSelection.line", {"side": "left", "sticky": "ns"})]})]}
 
     line = strip("underline", p["accent"], 3)
     idle = strip("empty_line", None, 3)
@@ -616,6 +631,68 @@ def _motion_allowed(widget):
     enabled = BOOL()
     # SPI_GETCLIENTAREAANIMATION follows the user's Windows animation preference.
     return bool(ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0) and enabled.value)
+
+
+class DetailTransition:
+    """Run one short, interruptible decoration on a mapped widget, with no idle timer."""
+
+    def __init__(self, widget):
+        self.widget = widget
+        self.timer = self.frame = None
+        widget.bind("<Unmap>", self.finish, add="+")
+        widget.bind("<Destroy>", self.cancel, add="+")
+
+    def cancel(self, _event=None):
+        if self.timer is not None:
+            self.widget.after_cancel(self.timer)
+        self.timer = self.frame = None
+
+    def finish(self, _event=None):
+        frame = self.frame
+        self.cancel()
+        if frame:
+            frame(1.0)
+
+    def play(self, frame):
+        self.finish()
+        if not self.widget.winfo_ismapped() or not _motion_allowed(self.widget):
+            frame(1.0)
+            return
+        self.frame = frame
+        started = monotonic()
+
+        def advance():
+            t = min(1.0, (monotonic() - started) / .11)
+            frame(1 - (1 - t) ** 2)
+            if t < 1:
+                self.timer = self.widget.after(20, advance)
+            else:
+                self.timer = self.frame = None
+
+        advance()
+
+
+def animate_workspace_marker(notebook, transition):
+    owner = notebook._root()
+    theme = ttk.Style(notebook).theme_use()
+    images = getattr(owner, "_pdf_control_images", {}).get(theme, {})
+    image = images.get("segment_mark")
+    if image is None:
+        return
+    color = PALETTES[theme.removeprefix("pdf_")]["accent"]
+    previous = None
+
+    def draw(progress):
+        nonlocal previous
+        inset = round(9 * (1 - progress))
+        if inset == previous:
+            return
+        if previous is None and inset:
+            image.blank()
+        image.put(color, to=(inset, 0, image.width() - inset, image.height()))
+        previous = inset
+
+    transition.play(draw)
 
 
 class ReviewProgressbar(ttk.Progressbar):

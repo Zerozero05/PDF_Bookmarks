@@ -1,6 +1,36 @@
 # 界面设计与兼容约定
 
-更新日期：2026-11-24。本页同时记录 v1.13.0 的界面与连续校对改版，以及已汇入正式 v1.12.0 的均衡清爽与校对辅助。早期主题、共享置顶、专注和快捷键设计保留在各节。验证范围见[验证记录](../VALIDATION.md)。
+更新于 2026-11-28。本页记录本地试用的配色和交互、v1.13.0 的界面与连续校对改版，以及 v1.12.0 的校对辅助。验证范围见[验证记录](../VALIDATION.md)。
+
+<a name="paper-teal"></a>
+
+## 三种外观的工作区与内容面
+
+| 外观 | 窗口背景 | 目录及内容面 | 选中行 | 主按钮底色 / 文字 |
+| --- | --- | --- | --- | --- |
+| 日间 | `#F3F1EB` | `#FFFEFB` | `#DAEAE7` | `#204F50` / `#FFFFFF` |
+| 夜间 | `#202529` | `#2B3236` | `#304E51` | `#91CBC2` / `#162927` |
+| 护眼 | `#C9CCBE` | `#E0E3D8` | `#BED3CB` | `#345955` / `#FFFFFF` |
+
+日间用冷灰表头衬托偏暖的内容面。夜间提亮正文与主按钮，同时让长列表维持石墨底色。护眼模式降低大面积底色的亮度与饱和度，输入区稍浅，PDF 保持原色。章节靠字重与底色建立层次，海青细线指示选择，勾号表示写入或确认，梅色错误提示同时给出可读原因。
+
+把背景、悬停、选中、描边和文字分别定义，可以在三种外观中独立校准对比度。两个标签页沿用同一套颜色含义。[Radix 在 GitHub 上的色阶说明](https://github.com/radix-ui/website/blob/main/data/colors/docs/palette-composition/understanding-the-scale.mdx) · [Fluent 2 颜色规范](https://fluent2.microsoft.design/color) · [Apple 深色模式指南](https://developer.apple.com/cn/design/human-interface-guidelines/dark-mode) · [小红书设计师的暗色模式案例](https://hellofuxiao.com/project-2)
+
+中文密集列表优先区分主次文字，主色集中用于当前选择和主要操作。公开的配色演示和排版案例用于取舍强调色与文字明暗。[抖音作者的配色演示说明](https://jingxuan.douyin.com/m/video/7602541414081170726) · [B 站中文界面排版案例](https://www.bilibili.com/opus/1006615522476818441)
+
+<a name="review-viewport"></a>
+
+## 本地试用 · 工具栏、校对与读页（2026-11-27）
+
+用户选择三条流程全部优化，采用轻层次工具栏和细腻过渡。目录与 PDF 放在实色内容面上，页签指示线和来源轮廓只在切换时短暂变化，使用 Windows 关闭动画的设置时直接显示终态。滚动和缩放不加入惯性动画。原 PDF 用自身颜色渲染。
+
+同页选择复用已显示页面，缩放保留指针或视口中心处的纸面位置。待确认筛选中只移除已完成且没有匹配子条目的行，低可信筛选仍显示已人工确认的低可信项。写入本数取自执行时采用的勾选集合。
+
+设计参考了抖音的控件反馈、B 端筛选流程、小红书的操作一致性以及 Apple 的工具层和内容层分离。[抖音开放平台](https://partner.open-douyin.com/docs/resource/zh-CN/mini-app/design/design-specification/visual-specification/Common-Control) · [B 站设计案例](https://www.bilibili.com/opus/1041535054009860099) · [小红书易用指南](https://miniapp.xiaohongshu.com/doc/DC993962) · [Apple 设计讲解](https://developer.apple.com/videos/play/wwdc2025/219/)
+
+WinUI Gallery 的局部动效和 SumatraPDF 的渲染队列用于对照设计与请求取消策略，代码在原有 Tk/ttk 和 PDF 工作线程内实现。[控件示例](https://github.com/microsoft/WinUI-Gallery/commit/12f5a44af8781ef2ce4a5c7d5d61b4d3600c4256) · [渲染队列](https://github.com/sumatrapdfreader/sumatrapdf/blob/c0b84002b975e772fef7041973fcc16c6e449609/src/shared/RenderCache.cpp#L844)
+
+实屏用同一条目比较日间、夜间与护眼两页，另以 1000 × 720 和程序字号 125% 检查普通及专注模式。连续切页交由窗口事件循环绘制，指示线只更新变化的像素范围。长目录的撤销历史在内存中压缩，两项实测见[同机试用验证](../VALIDATION.md#review-viewport-validation)。
 
 ## 设计方向
 
@@ -94,7 +124,7 @@
 
 ### 对照与批量处理
 
-“定位 → 同时对照原目录行”仅在用户开启时显示紧凑来源裁图，目标页继续只读；无来源不推测，关闭释放显示图像。裁图采用识别所用的归一化显示坐标，限制最终像素预算，并覆盖旋转情况。来源区域使用80px高滚动视口，保留原裁图像素，较高内容通过该区域滚轮或滚动条查看；不缩小来源图来换取布局通过，不改变目标页缩放。来源预览不能替代目标页确认。
+“定位 → 同时对照原目录行”在开启后显示原行裁图。裁图采用识别时的归一化坐标，支持旋转页面，并限制输出像素数。来源视口随窗口高度在 40 至 80 px 间调整，高出的内容可用滚轮或滚动条查看。关闭对照会释放裁图，目标页保留自己的缩放比例和确认状态。
 
 “目录操作 → 批量修改所选标题…”要求明确选择、预览和应用。只处理所选标题，文字替换不引入正则或自动符号改写；空标题、草稿变化或任务忙碌时拒绝应用。改变项撤销确认状态，整次修改对应一次撤销；范围外条目的全部字段保持。
 
